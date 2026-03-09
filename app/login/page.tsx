@@ -10,6 +10,16 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
+// These match your backend roles EXACTLY
+const ADMIN_ROLES = [
+  'Ward Admin',
+  'Zone Admin', 
+  'Situation Room Admin',
+  'System Admin',
+] as const;
+
+type AdminRole = typeof ADMIN_ROLES[number];
+
 function LoginForm() {
   const router = useRouter();
   const { signIn, isAuthenticated, isLoading: authLoading, user } = useAuth();
@@ -22,22 +32,29 @@ function LoginForm() {
   // Redirect if already authenticated
   useEffect(() => {
     if (!authLoading && isAuthenticated && user) {
-      // Redirect based on role
-      switch (user.role) {
-        case 'ward_admin':
-          router.push('/admin/ward');
-          break;
-        case 'zone_admin':
-          router.push('/admin/zone');
-          break;
-        case 'situation_room':
-          router.push('/admin/situation-room');
-          break;
-        case 'system_admin':
-          router.push('/admin/system');
-          break;
-        default:
-          router.push('/admin');
+      // Check if user has admin role
+      if (ADMIN_ROLES.includes(user.role as any)) {
+        // Redirect based on role
+        switch (user.role) {
+          case 'Ward Admin':
+            router.push('/admin/ward');
+            break;
+          case 'Zone Admin':
+            router.push('/admin/zone');
+            break;
+          case 'Situation Room Admin':
+            router.push('/admin/situation-room');
+            break;
+          case 'System Admin':
+            router.push('/admin/system');
+            break;
+          default:
+            router.push('/admin/dashboard');
+        }
+      } else {
+        // User is not an admin - sign them out
+        console.log('Non-admin user detected:', user.role);
+        // You might want to call signOut here if needed
       }
     }
   }, [authLoading, isAuthenticated, user, router]);
@@ -49,24 +66,26 @@ function LoginForm() {
 
     try {
       await signIn(email, password);
+      // Redirect is handled by the useEffect above
     } catch (err: any) {
-      setError(err.message || 'Failed to sign in. Please try again.');
+      console.error('Login error:', err);
+      setError(err.message || 'Failed to sign in. Please check your credentials.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Demo login for testing
-  const handleDemoLogin = async (role: string) => {
+  // Demo login for testing - updated to match backend roles
+  const handleDemoLogin = async (role: AdminRole) => {
     setError('');
     setIsLoading(true);
 
-    // Simulate API call with demo credentials
-    const demoCredentials: Record<string, { email: string; password: string }> = {
-      ward_admin: { email: 'ward@demo.com', password: 'demo123' },
-      zone_admin: { email: 'zone@demo.com', password: 'demo123' },
-      situation_room: { email: 'situation@demo.com', password: 'demo123' },
-      system_admin: { email: 'admin@demo.com', password: 'demo123' },
+    // Map demo roles to actual credentials
+    const demoCredentials: Record<AdminRole, { email: string; password: string }> = {
+      'Ward Admin': { email: 'wardadmin@example.com', password: 'Admin123!' },
+      'Zone Admin': { email: 'zoneadmin1@example.com', password: 'Admin123!' },
+      'Situation Room Admin': { email: 'situation@example.com', password: 'Admin123!' },
+      'System Admin': { email: 'admin@example.com', password: 'Admin123!' },
     };
 
     const creds = demoCredentials[role];
@@ -74,17 +93,7 @@ function LoginForm() {
       try {
         await signIn(creds.email, creds.password);
       } catch (err: any) {
-        // For demo, simulate successful login
-        localStorage.setItem('authToken', 'demo-token');
-        localStorage.setItem('user', JSON.stringify({
-          id: '1',
-          name: `Demo ${role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}`,
-          email: creds.email,
-          role: role,
-          wardId: role === 'ward_admin' ? 'ward-1' : undefined,
-          zoneId: role === 'zone_admin' ? 'zone-1' : undefined,
-        }));
-        window.location.reload();
+        setError(err.message);
       }
     }
     setIsLoading(false);
@@ -107,14 +116,14 @@ function LoginForm() {
             <Shield className="h-8 w-8" />
           </div>
           <h1 className="text-2xl font-bold">Election Monitor</h1>
-          <p className="text-muted-foreground">Admin Panel</p>
+          <p className="text-muted-foreground">Admin Portal</p>
         </div>
 
         <Card className="shadow-lg">
           <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl text-center">Sign In</CardTitle>
+            <CardTitle className="text-2xl text-center">Admin Sign In</CardTitle>
             <CardDescription className="text-center">
-              Enter your credentials to access the admin panel
+              Enter your credentials to access the admin dashboard
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -135,6 +144,8 @@ function LoginForm() {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   disabled={isLoading}
+                  autoComplete="email"
+                  autoFocus
                 />
               </div>
 
@@ -149,6 +160,7 @@ function LoginForm() {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     disabled={isLoading}
+                    autoComplete="current-password"
                   />
                   <Button
                     type="button"
@@ -156,6 +168,7 @@ function LoginForm() {
                     size="icon"
                     className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
                     onClick={() => setShowPassword(!showPassword)}
+                    disabled={isLoading}
                   >
                     {showPassword ? (
                       <EyeOff className="h-4 w-4 text-muted-foreground" />
@@ -178,16 +191,16 @@ function LoginForm() {
               </Button>
             </form>
 
-            {/* Demo Login Buttons */}
+            {/* Demo Login Buttons - Using actual backend roles */}
             <div className="mt-6 pt-6 border-t">
               <p className="text-sm text-muted-foreground text-center mb-4">
-                Demo Access (for testing)
+                Demo Access (using actual database users)
               </p>
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handleDemoLogin('ward_admin')}
+                  onClick={() => handleDemoLogin('Ward Admin')}
                   disabled={isLoading}
                 >
                   Ward Admin
@@ -195,7 +208,7 @@ function LoginForm() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handleDemoLogin('zone_admin')}
+                  onClick={() => handleDemoLogin('Zone Admin')}
                   disabled={isLoading}
                 >
                   Zone Admin
@@ -203,7 +216,7 @@ function LoginForm() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handleDemoLogin('situation_room')}
+                  onClick={() => handleDemoLogin('Situation Room Admin')}
                   disabled={isLoading}
                 >
                   Situation Room
@@ -211,18 +224,21 @@ function LoginForm() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handleDemoLogin('system_admin')}
+                  onClick={() => handleDemoLogin('System Admin')}
                   disabled={isLoading}
                 >
                   System Admin
                 </Button>
               </div>
+              <p className="text-xs text-muted-foreground text-center mt-2">
+                Password for all demo accounts: <span className="font-mono">Admin123!</span>
+              </p>
             </div>
           </CardContent>
         </Card>
 
-        <p className="text-center text-sm text-muted-foreground mt-6">
-          By signing in, you agree to our Terms of Service and Privacy Policy.
+        <p className="text-center text-xs text-muted-foreground mt-6">
+          Secure access for election monitoring administrators
         </p>
       </div>
     </div>
