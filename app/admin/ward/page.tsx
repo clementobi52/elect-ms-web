@@ -8,8 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { RefreshCw, MapPin, Users, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
-import { Card, CardContent } from '@/components/ui/card';  // Add this import
-import { Skeleton } from '@/components/ui/skeleton';  // Add this import
+import { Card, CardContent } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 
 // Import components
 import { StatsCards } from '@/components/admin/ward/StatsCards';
@@ -35,6 +35,7 @@ export default function WardAdminDashboard() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [wardName, setWardName] = useState<string>('');
   
   // State for data
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
@@ -81,12 +82,13 @@ export default function WardAdminDashboard() {
       };
 
       // Fetch all data in parallel
-      const [dashboardRes, statsRes, resultsRes, partiesRes, incidentsRes] = await Promise.all([
+      const [dashboardRes, statsRes, resultsRes, partiesRes, incidentsRes, wardRes] = await Promise.all([
         fetch(`${API_BASE_URL}/protected/dashboard`, { headers }),
         fetch(`${API_BASE_URL}/admin/ward/${user.wardId}/stats`, { headers }),
         fetch(`${API_BASE_URL}/admin/ward/${user.wardId}/pending-results`, { headers }),
         fetch(`${API_BASE_URL}/parties`, { headers }),
-        fetch(`${API_BASE_URL}/admin/ward/${user.wardId}/incidents`, { headers })
+        fetch(`${API_BASE_URL}/admin/ward/${user.wardId}/incidents`, { headers }),
+        fetch(`${API_BASE_URL}/admin/wards/${user.wardId}`, { headers })
       ]);
 
       if (!dashboardRes.ok) {
@@ -95,6 +97,11 @@ export default function WardAdminDashboard() {
 
       const dashboardData = await dashboardRes.json();
       setDashboardData(dashboardData);
+
+      if (wardRes.ok) {
+        const wardData = await wardRes.json();
+        setWardName(wardData.name);
+      }
 
       if (statsRes.ok) {
         const statsData = await statsRes.json();
@@ -142,27 +149,47 @@ export default function WardAdminDashboard() {
 
   useEffect(() => {
     fetchAllData();
+    
+    // Set up auto-refresh every 5 minutes (300 seconds) instead of 30 seconds
+    const interval = setInterval(() => {
+      fetchAllData(false);
+    }, 300000);
+    
+    return () => clearInterval(interval);
   }, [user]);
 
   // Transform polling agents for UI
-  const pollingUnits: PollingUnit[] = dashboardData?.pollingAgents?.map((agent, index) => ({
-    id: agent.id,
-    name: agent.assignedPollingUnit?.name || `Polling Unit ${index + 1}`,
-    code: `PU-${(index + 1).toString().padStart(3, '0')}`,
-    registeredVoters: 0,
-    agent: agent.name,
-    status: agent.status === 'Online' ? 'active' : 'offline',
-    resultsSubmitted: false
-  })) || [];
+  const pollingUnits: PollingUnit[] = dashboardData?.pollingAgents?.map((agent, index) => {
+    const isOnline = agent.updatedAt && 
+      new Date(agent.updatedAt).getTime() > Date.now() - 5 * 60 * 1000;
+    
+    return {
+      id: agent.id,
+      name: agent.assignedPollingUnit?.name || `Polling Unit ${index + 1}`,
+      code: `PU-${(index + 1).toString().padStart(3, '0')}`,
+      registeredVoters: 0,
+      agent: agent.name,
+      status: isOnline ? 'active' : 'offline',
+      resultsSubmitted: false
+    };
+  }) || [];
 
-  const agents = dashboardData?.pollingAgents?.map(agent => ({
-    id: agent.id,
-    name: agent.name,
-    email: agent.email,
-    pollingUnit: agent.assignedPollingUnit?.name || 'Unassigned',
-    status: agent.status,
-    lastActive: agent.lastKnownLocation ? 'Just now' : 'Unknown'
-  })) || [];
+
+// In your dashboard page, the agents transformation should be:
+const agents = dashboardData?.pollingAgents?.map(agent => ({
+  id: agent.id,
+  name: agent.name,
+  email: agent.email,
+  pollingUnitName: agent.assignedPollingUnit?.name || 'Unassigned',
+  updatedAt: agent.updatedAt,
+  lastKnownLocation: agent.lastKnownLocation,
+  resultsSubmitted: agent.resultsSubmitted || 0
+})) || [];
+
+
+
+
+
 
   const handleApprove = async (resultId: string, comment: string) => {
     try {
@@ -305,7 +332,7 @@ export default function WardAdminDashboard() {
     <div className="flex flex-col min-h-screen">
       <AdminHeader 
         title="Ward Admin Dashboard" 
-        subtitle={`Managing Ward: ${user?.wardId || 'Ward 1'}`}
+        subtitle={`Managing ${wardName || 'Ward'}`}
       />
       
       <div className="flex-1 p-4 md:p-6 space-y-6">
@@ -347,7 +374,7 @@ export default function WardAdminDashboard() {
             </TabsTrigger>
             <TabsTrigger value="agents" className="gap-2">
               <Users className="h-4 w-4" />
-              Agents
+              Agents ({agents.length})
             </TabsTrigger>
             <TabsTrigger value="incidents" className="gap-2">
               <AlertTriangle className="h-4 w-4" />
@@ -374,11 +401,10 @@ export default function WardAdminDashboard() {
           </TabsContent>
 
           <TabsContent value="agents">
-            <AgentsTab 
-              agents={agents}
-              getInitials={getInitials}
-            />
-          </TabsContent>
+ <AgentsTab 
+    
+  /> 
+</TabsContent>
 
           <TabsContent value="incidents">
             <IncidentsTab 

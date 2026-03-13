@@ -10,17 +10,21 @@ export const ROLES = {
 export type Role = typeof ROLES[keyof typeof ROLES];
 
 // User type
-export interface User {
+interface Agent {
   id: string;
   name: string;
   email: string;
-  role: Role;
-  pollingUnitId?: string;
-  wardId?: string;
-  zoneId?: string;
-  status?: 'Online' | 'Offline';
-  createdAt?: string;
+  pollingUnitName: string;
   updatedAt?: string;
+  lastKnownLocation?: {
+    latitude: number;
+    longitude: number;
+  };
+  resultsSubmitted?: number;
+  status?: 'Online' | 'Offline';
+  lastActive?: string;
+  locationReconciledBy?: string;
+  locationReconciledAt?: string;
 }
 
 // Polling Unit type
