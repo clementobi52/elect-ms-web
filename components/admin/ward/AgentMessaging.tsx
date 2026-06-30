@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { Socket } from 'socket.io-client';
+import { getSocket, onConnectionChange } from '@/lib/socket-service';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -48,6 +49,7 @@ export function AgentMessaging({ agent, onClose, getInitials }: AgentMessagingPr
   const [isLoading, setIsLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isSending, setIsSending] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -115,27 +117,22 @@ export function AgentMessaging({ agent, onClose, getInitials }: AgentMessagingPr
   };
 
   useEffect(() => {
-    const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5000';
+    // Get the shared socket instance
+    const socketInstance = getSocket();
+    setSocket(socketInstance);
     
-    console.log('🔌 Connecting to socket for messaging...');
+    // Check current connection status
+    setIsConnected(socketInstance.connected);
     
-    const socketInstance = io(SOCKET_URL, {
-      transports: ['polling', 'websocket'],
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-    });
-
-    socketInstance.on('connect', () => {
-      console.log('✅ Messaging socket connected', socketInstance.id);
-      setIsConnected(true);
-      
-      // Authenticate with the server
-      if (user?.id && user?.wardId) {
-        console.log('🔐 Authenticating admin:', user.id);
+    // Listen to connection status changes
+    const unsubscribe = onConnectionChange((connected) => {
+      setIsConnected(connected);
+      if (connected && user?.id && !isAuthenticated) {
+        // Re-authenticate when reconnected
+        console.log('🔐 Re-authenticating on reconnect');
         socketInstance.emit('authenticate', {
           userId: user.id,
-          pollingUnitId: '',
+          pollingUnitId: user.pollingUnitId || '',
           wardId: user.wardId,
           role: user.role,
           userName: user.name
@@ -143,21 +140,30 @@ export function AgentMessaging({ agent, onClose, getInitials }: AgentMessagingPr
       }
     });
 
-    socketInstance.on('authenticated', (data) => {
+    // Set up event handlers
+    const handleConnect = () => {
+      console.log('✅ Messaging socket connected');
+      setIsConnected(true);
+    };
+    
+    const handleAuthenticated = (data: any) => {
       console.log('✅ Authenticated successfully:', data);
+      setIsAuthenticated(true);
       
       // Request message history for this agent
-      socketInstance.emit('get-message-history', {
-        userId: user?.id,
-        withUser: agent.id
-      });
+      if (user?.id && agent.id) {
+        console.log('📜 Requesting message history for agent:', agent.id);
+        socketInstance.emit('get-message-history', {
+          userId: user.id,
+          withUser: agent.id
+        });
+      }
       
       // Load history from REST API as well
       loadMessageHistory();
-    });
-
-    // Listen for message history
-    socketInstance.on('message-history', (data) => {
+    };
+    
+    const handleMessageHistory = (data: any) => {
       console.log('📜 Received message history:', data);
       if (data.messages && Array.isArray(data.messages)) {
         const historyMessages = data.messages.map((msg: any) => ({
@@ -172,7 +178,6 @@ export function AgentMessaging({ agent, onClose, getInitials }: AgentMessagingPr
           toRole: msg.toRole
         }));
         setMessages(prev => {
-          // Combine with existing messages, remove duplicates
           const allMessages = [...historyMessages, ...prev];
           const uniqueMessages = allMessages.filter((msg, index, self) => 
             index === self.findIndex(m => m.id === msg.id)
@@ -182,14 +187,14 @@ export function AgentMessaging({ agent, onClose, getInitials }: AgentMessagingPr
           );
         });
       }
-    });
-
-    socketInstance.on('message-sent', (data) => {
+    };
+    
+    const handleMessageSent = (data: any) => {
       console.log('✅ Message sent confirmation:', data);
       setIsSending(false);
-    });
-
-    socketInstance.on('message-error', (error) => {
+    };
+    
+    const handleMessageError = (error: any) => {
       console.error('❌ Message error:', error);
       toast({
         title: "Error",
@@ -200,13 +205,11 @@ export function AgentMessaging({ agent, onClose, getInitials }: AgentMessagingPr
       
       // Remove the optimistic message if it failed
       setMessages(prev => prev.filter(m => !m.id.startsWith('temp-')));
-    });
-
-    // Listen for agent replies - both event types
+    };
+    
     const handleAgentMessage = (message: Message) => {
       console.log('📨 Received agent message:', message);
       
-      // Only add messages for this agent
       if (message.fromId === agent.id) {
         setMessages(prev => {
           if (prev.some(m => m.id === message.id)) return prev;
@@ -214,43 +217,60 @@ export function AgentMessaging({ agent, onClose, getInitials }: AgentMessagingPr
         });
       }
     };
-
+    
+    const handleDisconnect = (reason: string) => {
+      console.log('🔌 Messaging socket disconnected:', reason);
+      setIsConnected(false);
+      setIsAuthenticated(false);
+    };
+    
+    const handleConnectError = (error: any) => {
+      console.error('❌ Connection error:', error);
+      setIsConnected(false);
+      setIsLoading(false);
+    };
+    
+    // Register event listeners
+    socketInstance.on('connect', handleConnect);
+    socketInstance.on('authenticated', handleAuthenticated);
+    socketInstance.on('message-history', handleMessageHistory);
+    socketInstance.on('message-sent', handleMessageSent);
+    socketInstance.on('message-error', handleMessageError);
     socketInstance.on('agent-message', handleAgentMessage);
     socketInstance.on('agent-message-to-admin', handleAgentMessage);
     socketInstance.on('agent-reply', handleAgentMessage);
-
-    // Listen for pending messages
-    socketInstance.on('pending-messages', (data) => {
-      console.log('📨 Pending messages received:', data);
-      if (data.messages && Array.isArray(data.messages)) {
-        data.messages.forEach((message: Message) => {
-          if (message.fromId === agent.id) {
-            setMessages(prev => {
-              if (prev.some(m => m.id === message.id)) return prev;
-              return [...prev, { ...message, type: 'agent' }];
-            });
-          }
-        });
-      }
-    });
-
-    socketInstance.on('disconnect', (reason) => {
-      console.log('🔌 Messaging socket disconnected:', reason);
-      setIsConnected(false);
-    });
-
-    socketInstance.on('connect_error', (error) => {
-      console.error('❌ Connection error:', error);
-      setIsConnected(false);
-    });
-
-    setSocket(socketInstance);
-
+    socketInstance.on('disconnect', handleDisconnect);
+    socketInstance.on('connect_error', handleConnectError);
+    
+    // Authenticate if already connected
+    if (socketInstance.connected && user?.id && !isAuthenticated) {
+      console.log('🔐 Authenticating existing connection');
+      socketInstance.emit('authenticate', {
+        userId: user.id,
+        pollingUnitId: user.pollingUnitId || '',
+        wardId: user.wardId,
+        role: user.role,
+        userName: user.name
+      });
+    }
+    
+    // Cleanup
     return () => {
-      console.log('🧹 Cleaning up messaging socket');
-      socketInstance.disconnect();
+      console.log('🧹 Cleaning up event listeners');
+      socketInstance.off('connect', handleConnect);
+      socketInstance.off('authenticated', handleAuthenticated);
+      socketInstance.off('message-history', handleMessageHistory);
+      socketInstance.off('message-sent', handleMessageSent);
+      socketInstance.off('message-error', handleMessageError);
+      socketInstance.off('agent-message', handleAgentMessage);
+      socketInstance.off('agent-message-to-admin', handleAgentMessage);
+      socketInstance.off('agent-reply', handleAgentMessage);
+      socketInstance.off('disconnect', handleDisconnect);
+      socketInstance.off('connect_error', handleConnectError);
+      unsubscribe();
+      // Don't disconnect the socket here - let other components use it
     };
-  }, [user, agent.id]);
+  }, [user, agent.id, toast, isAuthenticated]);
 
   const sendMessage = async () => {
     if (!newMessage.trim() || !socket || !isConnected) return;
@@ -294,7 +314,6 @@ export function AgentMessaging({ agent, onClose, getInitials }: AgentMessagingPr
     };
     setMessages(prev => [...prev, tempMessage]);
     
-    const messageText = newMessage;
     setNewMessage('');
 
     // Send the message using both event names for compatibility
@@ -315,9 +334,9 @@ export function AgentMessaging({ agent, onClose, getInitials }: AgentMessagingPr
   };
 
   const refreshMessages = () => {
-    if (socket && isConnected) {
+    if (socket && isConnected && user?.id) {
       socket.emit('get-message-history', {
-        userId: user?.id,
+        userId: user.id,
         withUser: agent.id
       });
     }

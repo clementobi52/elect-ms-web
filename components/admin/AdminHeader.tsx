@@ -1,8 +1,9 @@
+// components/admin/AdminHeader.tsx
 "use client";
 
 import React from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { NotificationsPanel } from './NotificationsPanel';
+import { NotificationsPanel } from '@/components/admin/NotificationsPanel';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -15,17 +16,26 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Bell, LogOut, Menu, Settings, UserCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { useRouter } from 'next/navigation';
 
 interface AdminHeaderProps {
   title: string;
   subtitle?: string;
   onMenuClick?: () => void;
+  actions?: React.ReactNode;
 }
 
-export default function AdminHeader({ title, subtitle, onMenuClick }: AdminHeaderProps) {
+export default function AdminHeader({ 
+  title, 
+  subtitle, 
+  onMenuClick,
+  actions 
+}: AdminHeaderProps) {
   const { user, signOut } = useAuth();
+  const router = useRouter();
 
   const getInitials = (name: string) => {
+    if (!name) return 'AD';
     return name
       .split(' ')
       .map(word => word[0])
@@ -47,6 +57,11 @@ export default function AdminHeader({ title, subtitle, onMenuClick }: AdminHeade
       default:
         return 'bg-gray-100 text-gray-800';
     }
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.push('/login');
   };
 
   return (
@@ -75,9 +90,20 @@ export default function AdminHeader({ title, subtitle, onMenuClick }: AdminHeade
 
           {/* Right side */}
           <div className="flex items-center space-x-4">
-            {/* Notifications - Only show for Ward Admin */}
-            {user?.role === 'Ward Admin' && user?.wardId && (
-              <NotificationsPanel wardId={user.wardId} />
+            {/* Custom Actions */}
+            {actions && (
+              <div className="flex items-center space-x-2">
+                {actions}
+              </div>
+            )}
+
+            {/* Notifications - Show for all admin roles */}
+            {user?.id && (
+              <NotificationsPanel 
+                userId={user.id}
+                userRole={user.role}
+                wardId={user.role === 'Ward Admin' ? user.wardId : undefined}
+              />
             )}
 
             {/* Profile Dropdown */}
@@ -85,16 +111,18 @@ export default function AdminHeader({ title, subtitle, onMenuClick }: AdminHeade
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="flex items-center space-x-2">
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src={`https://ui-avatars.com/api/?name=${user?.name}&background=random`} />
+                    <AvatarImage src={`https://ui-avatars.com/api/?name=${user?.name || 'Admin'}&background=random`} />
                     <AvatarFallback>{user?.name ? getInitials(user.name) : 'AD'}</AvatarFallback>
                   </Avatar>
                   <div className="hidden md:block text-left">
-                    <p className="text-sm font-medium">{user?.name}</p>
+                    <p className="text-sm font-medium">{user?.name || 'Admin'}</p>
                     <div className="flex items-center gap-2">
-                      <p className="text-xs text-muted-foreground">{user?.email}</p>
-                      <Badge className={getRoleBadgeColor(user?.role || '')}>
-                        {user?.role}
-                      </Badge>
+                      <p className="text-xs text-muted-foreground">{user?.email || ''}</p>
+                      {user?.role && (
+                        <Badge className={getRoleBadgeColor(user.role)}>
+                          {user.role}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 </Button>
@@ -102,16 +130,16 @@ export default function AdminHeader({ title, subtitle, onMenuClick }: AdminHeade
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>My Account</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push('/admin/profile')}>
                   <UserCircle className="mr-2 h-4 w-4" />
                   Profile
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push('/admin/settings')}>
                   <Settings className="mr-2 h-4 w-4" />
                   Settings
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => signOut()} className="text-red-600">
+                <DropdownMenuItem onClick={handleSignOut} className="text-red-600">
                   <LogOut className="mr-2 h-4 w-4" />
                   Sign Out
                 </DropdownMenuItem>

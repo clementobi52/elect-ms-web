@@ -1,15 +1,26 @@
+// app/admin/ward/page.tsx
 "use client";
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import AdminHeader from '@/components/admin/AdminHeader';
+import { MessagingWidget } from '@/components/admin/MessagingWidget';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { RefreshCw, MapPin, Users, AlertTriangle } from 'lucide-react';
+import { RefreshCw, MapPin, Users, AlertTriangle, AlertCircle, MessageSquare, Bell } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import Link from 'next/link';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 
 // Import components
 import { StatsCards } from '@/components/admin/ward/StatsCards';
@@ -19,6 +30,7 @@ import { PollingUnitsTab } from '@/components/admin/ward/PollingUnitsTab';
 import { AgentsTab } from '@/components/admin/ward/AgentsTab';
 import { IncidentsTab } from '@/components/admin/ward/IncidentsTab';
 import { PartiesQuickRef } from '@/components/admin/ward/PartiesQuickRef';
+import { NotificationsPanel } from '@/components/admin/NotificationsPanel';
 
 // Import types
 import { 
@@ -30,12 +42,26 @@ import {
   Incident 
 } from '@/lib/types/ward-admin';
 
+// UUID validation
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const isValidUUID = (id: string): boolean => {
+  return UUID_REGEX.test(id);
+};
+
 export default function WardAdminDashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [wardName, setWardName] = useState<string>('');
+  const isSystemAdmin = user?.role === 'System Admin';
+  
+  // Messaging Modal State
+  const [showMessagingModal, setShowMessagingModal] = useState(false);
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
+  const [selectedContactName, setSelectedContactName] = useState<string>('');
+  const [zonalAdminContact, setZonalAdminContact] = useState<{ id: string; name: string } | null>(null);
   
   // State for data
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
@@ -54,12 +80,79 @@ export default function WardAdminDashboard() {
     criticalIncidents: 0,
   });
   const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
+  // Fetch unread message count
+  const fetchUnreadCount = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`${API_BASE_URL}/admin/messages/unread-count`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setUnreadMessageCount(data.unreadCount || 0);
+      }
+    } catch (error) {
+      console.error('Error fetching unread count:', error);
+    }
+  };
+
+  // Fetch Zonal Admin contact info
+  const fetchZonalAdminContact = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const zoneId = user?.zoneId;
+      
+      if (!zoneId) {
+        console.log('No zone ID found, skipping zonal admin fetch');
+        return;
+      }
+      
+      // Try to get the zone admin
+      const response = await fetch(`${API_BASE_URL}/admin/zone/${zoneId}/admin`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.admin && isValidUUID(data.admin.id)) {
+          console.log('✅ Found Zonal Admin:', data.admin.name);
+          setZonalAdminContact({
+            id: data.admin.id,
+            name: data.admin.name
+          });
+        } else {
+          console.log('No valid zonal admin found for this zone');
+        }
+      } else {
+        // If no zone admin found, use a fallback or show a message
+        console.log('No zonal admin found for this zone');
+      }
+    } catch (error) {
+      console.error('Error fetching zonal admin:', error);
+    }
+  };
+
   const fetchAllData = async (showRefreshToast = false) => {
+    // For System Admin, show a message instead of trying to fetch ward-specific data
+    if (isSystemAdmin) {
+      setLoading(false);
+      return;
+    }
+
     if (!user?.wardId) {
       console.error('No ward ID found');
+      setLoading(false);
       return;
     }
 
@@ -128,6 +221,12 @@ export default function WardAdminDashboard() {
         setIncidents(incidentsData);
       }
 
+      // Fetch unread message count
+      await fetchUnreadCount();
+
+      // Fetch zonal admin contact
+      await fetchZonalAdminContact();
+
       if (showRefreshToast) {
         toast({
           title: "Dashboard Updated",
@@ -147,10 +246,39 @@ export default function WardAdminDashboard() {
     }
   };
 
+  // Handle opening messaging modal
+  const handleOpenMessaging = () => {
+    if (zonalAdminContact && isValidUUID(zonalAdminContact.id)) {
+      setSelectedContactId(zonalAdminContact.id);
+      setSelectedContactName(zonalAdminContact.name);
+      setShowMessagingModal(true);
+    } else {
+      // If no valid zonal admin found, show all conversations
+      toast({
+        title: "Messages",
+        description: "Opening all conversations.",
+        variant: "default",
+      });
+      setSelectedContactId(null);
+      setSelectedContactName('');
+      setShowMessagingModal(true);
+    }
+  };
+
+  // Handle receiving a new message notification
+  const handleNewMessage = () => {
+    fetchUnreadCount();
+    toast({
+      title: "📨 New Message",
+      description: "You have received a new message.",
+      duration: 5000,
+    });
+  };
+
   useEffect(() => {
     fetchAllData();
     
-    // Set up auto-refresh every 5 minutes (300 seconds) instead of 30 seconds
+    // Set up auto-refresh every 5 minutes (300 seconds)
     const interval = setInterval(() => {
       fetchAllData(false);
     }, 300000);
@@ -174,24 +302,26 @@ export default function WardAdminDashboard() {
     };
   }) || [];
 
-
-// In your dashboard page, the agents transformation should be:
-const agents = dashboardData?.pollingAgents?.map(agent => ({
-  id: agent.id,
-  name: agent.name,
-  email: agent.email,
-  pollingUnitName: agent.assignedPollingUnit?.name || 'Unassigned',
-  updatedAt: agent.updatedAt,
-  lastKnownLocation: agent.lastKnownLocation,
-  resultsSubmitted: agent.resultsSubmitted || 0
-})) || [];
-
-
-
-
-
+  const agents = dashboardData?.pollingAgents?.map(agent => ({
+    id: agent.id,
+    name: agent.name,
+    email: agent.email,
+    pollingUnitName: agent.assignedPollingUnit?.name || 'Unassigned',
+    updatedAt: agent.updatedAt,
+    lastKnownLocation: agent.lastKnownLocation,
+    resultsSubmitted: agent.resultsSubmitted || 0
+  })) || [];
 
   const handleApprove = async (resultId: string, comment: string) => {
+    if (isSystemAdmin) {
+      toast({
+        title: "System Admin View",
+        description: "You are viewing as System Admin. To manage results, use the System Admin dashboard.",
+        variant: "default",
+      });
+      return;
+    }
+
     try {
       const token = localStorage.getItem('authToken');
       
@@ -231,6 +361,15 @@ const agents = dashboardData?.pollingAgents?.map(agent => ({
   };
 
   const handleReject = async (resultId: string, comment: string) => {
+    if (isSystemAdmin) {
+      toast({
+        title: "System Admin View",
+        description: "You are viewing as System Admin. To manage results, use the System Admin dashboard.",
+        variant: "default",
+      });
+      return;
+    }
+
     try {
       const token = localStorage.getItem('authToken');
       
@@ -328,11 +467,84 @@ const agents = dashboardData?.pollingAgents?.map(agent => ({
     );
   }
 
+  // System Admin view - show message and link to System Admin dashboard
+  if (isSystemAdmin) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <AdminHeader 
+          title="Ward Admin Dashboard" 
+          subtitle="System Admin View"
+        />
+        <div className="flex-1 p-6">
+          <Card>
+            <CardContent className="pt-6 pb-6">
+              <div className="text-center py-12">
+                <AlertCircle className="h-16 w-16 mx-auto text-yellow-500 mb-4" />
+                <h2 className="text-2xl font-bold mb-2">System Admin View</h2>
+                <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                  You are logged in as a System Administrator. The Ward Admin dashboard requires a specific ward assignment.
+                </p>
+                <div className="flex gap-4 justify-center">
+                  <Link href="/admin/system">
+                    <Button size="lg">
+                      Go to System Admin Dashboard
+                    </Button>
+                  </Link>
+                  <Link href="/admin/ward/polling-units">
+                    <Button variant="outline" size="lg">
+                      <MapPin className="h-4 w-4 mr-2" />
+                      View All Polling Units
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // Regular Ward Admin view
   return (
     <div className="flex flex-col min-h-screen">
       <AdminHeader 
         title="Ward Admin Dashboard" 
         subtitle={`Managing ${wardName || 'Ward'}`}
+        actions={
+          <div className="flex items-center gap-2">
+            {/* Notifications Panel */}
+            {user?.wardId && (
+              <NotificationsPanel wardId={user.wardId} userId={user.id} userRole={user.role} />
+            )}
+            
+            {/* Message Button */}
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleOpenMessaging}
+              className="relative"
+            >
+              <MessageSquare className="h-4 w-4 mr-2" />
+              Messages
+              {unreadMessageCount > 0 && (
+                <Badge className="absolute -top-2 -right-2 h-5 w-5 rounded-full p-0 flex items-center justify-center bg-destructive text-white text-[10px]">
+                  {unreadMessageCount > 9 ? '9+' : unreadMessageCount}
+                </Badge>
+              )}
+            </Button>
+            
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => fetchAllData(true)}
+              disabled={refreshing}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
+        }
       />
       
       <div className="flex-1 p-4 md:p-6 space-y-6">
@@ -344,15 +556,6 @@ const agents = dashboardData?.pollingAgents?.map(agent => ({
               Live
             </Badge>
           </div>
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => fetchAllData(true)}
-            disabled={refreshing}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
         </div>
 
         {/* Stats Overview */}
@@ -401,10 +604,8 @@ const agents = dashboardData?.pollingAgents?.map(agent => ({
           </TabsContent>
 
           <TabsContent value="agents">
- <AgentsTab 
-    
-  /> 
-</TabsContent>
+            <AgentsTab />
+          </TabsContent>
 
           <TabsContent value="incidents">
             <IncidentsTab 
@@ -418,6 +619,44 @@ const agents = dashboardData?.pollingAgents?.map(agent => ({
         {/* Parties Quick Reference */}
         <PartiesQuickRef parties={partiesList} />
       </div>
+
+      {/* Messaging Modal */}
+      <Dialog open={showMessagingModal} onOpenChange={(open) => {
+        if (!open) {
+          setSelectedContactId(null);
+          setSelectedContactName('');
+        }
+        setShowMessagingModal(open);
+      }}>
+        <DialogContent className="max-w-4xl h-[80vh] max-h-[80vh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5" />
+              {selectedContactName ? `Chat with ${selectedContactName}` : 'Messages'}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedContactName 
+                ? `Send a message to ${selectedContactName}` 
+                : 'View all your conversations'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <MessagingWidget 
+              className="h-full w-full"
+              maxHeight="100%"
+              showHeader={false}
+              key={selectedContactId || 'all-conversations'}
+              initialContactId={selectedContactId || undefined}
+              initialContactName={selectedContactName}
+            />
+          </div>
+          <DialogFooter className="flex-shrink-0">
+            <Button variant="outline" onClick={() => setShowMessagingModal(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,11 +1,11 @@
 "use client";
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
-import { ROLES, getRoleDisplayName, getRoleBadgeColor } from '@/lib/types';
+import { getRoleDisplayName, getRoleBadgeColor } from '@/lib/types';
 import {
   LayoutDashboard,
   Users,
@@ -20,95 +20,144 @@ import {
   Shield,
   Eye,
   ClipboardList,
-  ChevronDown,
-  ChevronRight,
+  Activity,
+  HelpCircle,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface NavItem {
   title: string;
-  href: string;
+  getHref: (role: string) => string;
   icon: React.ReactNode;
-  roles: string[]; // Use string[] instead of Role[] to avoid type issues
+  roles: string[];
   children?: NavItem[];
 }
 
-// Define nav items with exact role strings
+// Helper to get role-specific base path
+const getRoleBasePath = (role: string): string => {
+  switch (role) {
+    case 'System Admin':
+      return '/admin/system';
+    case 'Situation Room Admin':
+      return '/admin/situation';
+    case 'Zone Admin':
+      return '/admin/zone';
+    case 'Ward Admin':
+      return '/admin/ward';
+    default:
+      return '/admin';
+  }
+};
+
+// Define nav items with role-based hrefs
 const navItems: NavItem[] = [
   {
     title: 'Dashboard',
-    href: '/admin/ward',
+    getHref: (role) => `${getRoleBasePath(role)}`,
     icon: <LayoutDashboard className="h-5 w-5" />,
     roles: ['Ward Admin', 'Zone Admin', 'Situation Room Admin', 'System Admin'],
   },
   {
-    title: 'Polling Units',
-    href: '/admin/ward/polling-units',
-    icon: <MapPin className="h-5 w-5" />,
-    roles: ['Ward Admin', 'Zone Admin', 'Situation Room Admin', 'System Admin'],
-  },
-  {
-    title: 'Agents',
-    href: '/admin/ward/agents',
-    icon: <Users className="h-5 w-5" />,
-    roles: ['Ward Admin', 'Zone Admin', 'Situation Room Admin', 'System Admin'],
-  },
-  {
-    title: 'Election Results',
-    href: '/admin/ward/results',
+    title: 'Election Management',
     icon: <FileText className="h-5 w-5" />,
     roles: ['Ward Admin', 'Zone Admin', 'Situation Room Admin', 'System Admin'],
+    children: [
+      {
+        title: 'Polling Units',
+        getHref: (role) => `${getRoleBasePath(role)}/polling-units`,
+        icon: <MapPin className="h-5 w-5" />,
+        roles: ['Ward Admin', 'Zone Admin', 'Situation Room Admin', 'System Admin'],
+      },
+      {
+        title: 'Agents',
+        getHref: (role) => `${getRoleBasePath(role)}/agents`,
+        icon: <Users className="h-5 w-5" />,
+        roles: ['Ward Admin', 'Zone Admin', 'Situation Room Admin', 'System Admin'],
+      },
+      {
+        title: 'Election Results',
+        getHref: (role) => `${getRoleBasePath(role)}/results`,
+        icon: <FileText className="h-5 w-5" />,
+        roles: ['Ward Admin', 'Zone Admin', 'Situation Room Admin', 'System Admin'],
+      },
+      {
+        title: 'Incidents',
+        getHref: (role) => `${getRoleBasePath(role)}/incidents`,
+        icon: <AlertTriangle className="h-5 w-5" />,
+        roles: ['Ward Admin', 'Zone Admin', 'Situation Room Admin', 'System Admin'],
+      },
+    ],
   },
   {
-    title: 'Incidents',
-    href: '/admin/ward/incidents',
-    icon: <AlertTriangle className="h-5 w-5" />,
-    roles: ['Ward Admin', 'Zone Admin', 'Situation Room Admin', 'System Admin'],
-  },
-  {
-    title: 'Wards',
-    href: '/admin/wards',
-    icon: <Building2 className="h-5 w-5" />,
-    roles: ['Zone Admin', 'Situation Room Admin', 'System Admin'],
-  },
-  {
-    title: 'Zones',
-    href: '/admin/zones',
+    title: 'Geographic Management',
     icon: <Map className="h-5 w-5" />,
-    roles: ['Situation Room Admin', 'System Admin'],
-  },
-  {
-    title: 'Live Monitoring',
-    href: '/admin/live',
-    icon: <Eye className="h-5 w-5" />,
-    roles: ['Situation Room Admin', 'System Admin'],
-  },
-  {
-    title: 'Analytics',
-    href: '/admin/analytics',
-    icon: <BarChart3 className="h-5 w-5" />,
     roles: ['Zone Admin', 'Situation Room Admin', 'System Admin'],
+    children: [
+      {
+        title: 'Wards',
+        getHref: (role) => role === 'System Admin' ? '/admin/wards' : `${getRoleBasePath(role)}/wards`,
+        icon: <Building2 className="h-5 w-5" />,
+        roles: ['Zone Admin', 'Situation Room Admin', 'System Admin'],
+      },
+      {
+        title: 'Zones',
+        getHref: (role) => role === 'System Admin' ? '/admin/zones' : `${getRoleBasePath(role)}/zones`,
+        icon: <Map className="h-5 w-5" />,
+        roles: ['Situation Room Admin', 'System Admin'],
+      },
+    ],
   },
   {
-    title: 'Reports',
-    href: '/admin/reports',
-    icon: <ClipboardList className="h-5 w-5" />,
+    title: 'Monitoring & Analytics',
+    icon: <Activity className="h-5 w-5" />,
     roles: ['Zone Admin', 'Situation Room Admin', 'System Admin'],
+    children: [
+      {
+        title: 'Live Monitoring',
+        getHref: (role) => role === 'System Admin' ? '/admin/live' : `${getRoleBasePath(role)}/live`,
+        icon: <Eye className="h-5 w-5" />,
+        roles: ['Situation Room Admin', 'System Admin'],
+      },
+      {
+        title: 'Analytics',
+        getHref: (role) => role === 'System Admin' ? '/admin/analytics' : `${getRoleBasePath(role)}/analytics`,
+        icon: <BarChart3 className="h-5 w-5" />,
+        roles: ['Zone Admin', 'Situation Room Admin', 'System Admin'],
+      },
+      {
+        title: 'Reports',
+        getHref: (role) => role === 'System Admin' ? '/admin/reports' : `${getRoleBasePath(role)}/reports`,
+        icon: <ClipboardList className="h-5 w-5" />,
+        roles: ['Zone Admin', 'Situation Room Admin', 'System Admin'],
+      },
+    ],
   },
   {
-    title: 'User Management',
-    href: '/admin/users',
+    title: 'System Administration',
     icon: <Shield className="h-5 w-5" />,
     roles: ['System Admin'],
-  },
-  {
-    title: 'System Settings',
-    href: '/admin/settings',
-    icon: <Settings className="h-5 w-5" />,
-    roles: ['System Admin'],
+    children: [
+      {
+        title: 'System Dashboard',
+        getHref: () => '/admin/system',
+        icon: <LayoutDashboard className="h-5 w-5" />,
+        roles: ['System Admin'],
+      },
+      {
+        title: 'User Management',
+        getHref: () => '/admin/users',
+        icon: <Users className="h-5 w-5" />,
+        roles: ['System Admin'],
+      },
+      {
+        title: 'System Settings',
+        getHref: () => '/admin/settings',
+        icon: <Settings className="h-5 w-5" />,
+        roles: ['System Admin'],
+      },
+    ],
   },
 ];
 
@@ -118,10 +167,22 @@ export default function AdminSidebar() {
 
   if (!user) return null;
 
-  // Filter items based on user role
-  const filteredNavItems = navItems.filter(item => 
-    item.roles.includes(user.role)
-  );
+  // Filter nav items based on user role
+  const filteredNavItems = useMemo(() => {
+    return navItems
+      .map(item => ({
+        ...item,
+        children: item.children?.filter(child => 
+          user.role === 'System Admin' ? true : child.roles.includes(user.role)
+        ),
+      }))
+      .filter(item => {
+        // Filter out empty sections
+        if (item.children && item.children.length === 0) return false;
+        // Check if the item itself is allowed
+        return user.role === 'System Admin' ? true : item.roles.includes(user.role);
+      });
+  }, [user.role]);
 
   const getInitials = (name: string) => {
     return name
@@ -134,8 +195,8 @@ export default function AdminSidebar() {
 
   return (
     <div className="flex h-screen w-64 flex-col border-r bg-card">
-      {/* Logo and Brand */}
-      <div className="flex h-16 items-center gap-2 border-b px-4">
+      {/* Logo and Brand - Fixed at top */}
+      <div className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
           <Shield className="h-5 w-5" />
         </div>
@@ -145,16 +206,16 @@ export default function AdminSidebar() {
         </div>
       </div>
 
-      {/* User Info */}
-      <div className="border-b p-4">
+      {/* User Info - Fixed */}
+      <div className="shrink-0 border-b p-4">
         <div className="flex items-center gap-3">
           <Avatar className="h-10 w-10">
             <AvatarFallback className="bg-primary/10 text-primary">
               {getInitials(user.name)}
             </AvatarFallback>
           </Avatar>
-          <div className="flex flex-col">
-            <span className="text-sm font-medium">{user.name}</span>
+          <div className="flex flex-col min-w-0">
+            <span className="text-sm font-medium truncate">{user.name}</span>
             <Badge className={cn("text-xs w-fit", getRoleBadgeColor(user.role))}>
               {getRoleDisplayName(user.role)}
             </Badge>
@@ -162,19 +223,58 @@ export default function AdminSidebar() {
         </div>
       </div>
 
-      {/* Navigation */}
-      <ScrollArea className="flex-1 px-3 py-4">
-        <nav className="flex flex-col gap-1">
+      {/* Navigation - Always expanded, scrollable without visible scrollbar */}
+      <div className="flex-1 overflow-y-auto hide-scrollbar px-3 py-4">
+        <nav className="flex flex-col gap-2">
           {filteredNavItems.length === 0 ? (
             <div className="text-center text-sm text-muted-foreground py-4">
               No navigation items available for your role: {user.role}
             </div>
           ) : (
             filteredNavItems.map((item) => {
-              const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+              // If item has children, render all children directly (no collapsible)
+              if (item.children && item.children.length > 0) {
+                return (
+                  <div key={item.title} className="space-y-1">
+                    {/* Section Header */}
+                    <div className="flex items-center gap-3 px-2 py-2 text-sm font-semibold text-muted-foreground">
+                      {item.icon}
+                      <span>{item.title}</span>
+                    </div>
+                    {/* Child Items */}
+                    <div className="ml-4 space-y-1">
+                      {item.children.map((child) => {
+                        const href = child.getHref(user.role);
+                        const isChildActive = pathname === href || 
+                          (href && pathname.startsWith(href + '/'));
+                        
+                        return (
+                          <Link key={href} href={href}>
+                            <Button
+                              variant="ghost"
+                              className={cn(
+                                "w-full justify-start gap-3",
+                                isChildActive && "bg-accent text-accent-foreground"
+                              )}
+                            >
+                              {child.icon}
+                              <span>{child.title}</span>
+                            </Button>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              }
+
+              // Render regular link item
+              const href = item.getHref(user.role);
+              const isActive = pathname === href || 
+                (href && pathname.startsWith(href + '/'));
               
               return (
-                <Link key={item.href} href={item.href}>
+                <Link key={href} href={href}>
                   <Button
                     variant="ghost"
                     className={cn(
@@ -190,10 +290,18 @@ export default function AdminSidebar() {
             })
           )}
         </nav>
-      </ScrollArea>
+      </div>
 
-      {/* Bottom Section */}
-      <div className="border-t p-4">
+      {/* Bottom Section - Fixed at bottom */}
+      <div className="shrink-0 border-t p-4 space-y-1">
+        <Button
+          variant="ghost"
+          className="w-full justify-start gap-3"
+          onClick={() => window.open('/help', '_blank')}
+        >
+          <HelpCircle className="h-5 w-5" />
+          <span>Help & Support</span>
+        </Button>
         <Button
           variant="ghost"
           className="w-full justify-start gap-3 text-destructive hover:bg-destructive/10 hover:text-destructive"

@@ -37,4 +37,14 @@ export interface DeleteDialogProps {
   name: string;
 }
 
+export interface Party {
+  id: string;
+  name: string;
+  logoUrl?: string;
+  slogan?: string;
+  registrationNumber?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export * from '@/lib/types';

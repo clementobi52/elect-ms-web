@@ -1,11 +1,15 @@
+// app/admin/zone/dashboard/page.tsx
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { useToast } from '@/components/ui/use-toast';
 import AdminHeader from '@/components/admin/AdminHeader';
+import { MessagingWidget } from '@/components/admin/MessagingWidget';
+import { NotificationsPanel } from '@/components/admin/NotificationsPanel';
 import { 
   Users, 
-  MapPin, 
   FileText, 
   AlertTriangle, 
   CheckCircle, 
@@ -16,12 +20,20 @@ import {
   MoreVertical,
   Download,
   Filter,
-  TrendingUp,
-  TrendingDown,
   BarChart3,
   PieChart,
   ArrowUpRight,
-  ArrowDownRight
+  RefreshCw,
+  Activity,
+  Mail,
+  MessageSquare,
+  MapPin,
+  User,
+  Calendar,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Loader2
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -50,166 +62,367 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Skeleton } from '@/components/ui/skeleton';
+import { apiClient } from '@/lib/api/client';
 
-// Demo data for Zonal Admin
-const zoneStats = {
-  totalWards: 8,
-  totalPollingUnits: 180,
-  totalAgents: 175,
-  activeAgents: 162,
-  offlineAgents: 13,
-  totalResults: 145,
-  pendingResults: 28,
-  approvedResults: 110,
-  rejectedResults: 7,
-  totalIncidents: 23,
-  criticalIncidents: 4,
-  resultsProgress: 80,
+// UUID validation
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const isValidUUID = (id: string): boolean => {
+  return UUID_REGEX.test(id);
 };
 
-const wards = [
-  { 
-    id: '1', 
-    name: 'Ward 1', 
-    code: 'W-001', 
-    pollingUnits: 25, 
-    agents: 24,
-    activeAgents: 22,
-    resultsSubmitted: 20,
-    pendingResults: 3,
-    incidents: 2,
-    admin: 'Alice Johnson',
-    progress: 80
-  },
-  { 
-    id: '2', 
-    name: 'Ward 2', 
-    code: 'W-002', 
-    pollingUnits: 22, 
-    agents: 22,
-    activeAgents: 20,
-    resultsSubmitted: 18,
-    pendingResults: 4,
-    incidents: 1,
-    admin: 'Bob Smith',
-    progress: 82
-  },
-  { 
-    id: '3', 
-    name: 'Ward 3', 
-    code: 'W-003', 
-    pollingUnits: 28, 
-    agents: 27,
-    activeAgents: 25,
-    resultsSubmitted: 22,
-    pendingResults: 5,
-    incidents: 4,
-    admin: 'Carol White',
-    progress: 79
-  },
-  { 
-    id: '4', 
-    name: 'Ward 4', 
-    code: 'W-004', 
-    pollingUnits: 20, 
-    agents: 20,
-    activeAgents: 18,
-    resultsSubmitted: 16,
-    pendingResults: 3,
-    incidents: 3,
-    admin: 'David Brown',
-    progress: 80
-  },
-  { 
-    id: '5', 
-    name: 'Ward 5', 
-    code: 'W-005', 
-    pollingUnits: 24, 
-    agents: 23,
-    activeAgents: 21,
-    resultsSubmitted: 19,
-    pendingResults: 4,
-    incidents: 5,
-    admin: 'Eva Green',
-    progress: 79
-  },
-  { 
-    id: '6', 
-    name: 'Ward 6', 
-    code: 'W-006', 
-    pollingUnits: 18, 
-    agents: 18,
-    activeAgents: 17,
-    resultsSubmitted: 15,
-    pendingResults: 2,
-    incidents: 2,
-    admin: 'Frank Miller',
-    progress: 83
-  },
-  { 
-    id: '7', 
-    name: 'Ward 7', 
-    code: 'W-007', 
-    pollingUnits: 23, 
-    agents: 22,
-    activeAgents: 20,
-    resultsSubmitted: 18,
-    pendingResults: 4,
-    incidents: 3,
-    admin: 'Grace Lee',
-    progress: 78
-  },
-  { 
-    id: '8', 
-    name: 'Ward 8', 
-    code: 'W-008', 
-    pollingUnits: 20, 
-    agents: 19,
-    activeAgents: 19,
-    resultsSubmitted: 17,
-    pendingResults: 3,
-    incidents: 3,
-    admin: 'Henry Davis',
-    progress: 85
-  },
-];
+interface Ward {
+  id: string;
+  name: string;
+  code: string;
+  pollingUnits: number;
+  agents: number;
+  activeAgents: number;
+  resultsSubmitted: number;
+  pendingResults: number;
+  incidents: number;
+  adminId?: string;
+  adminName?: string;
+  progress: number;
+}
 
-const wardAdmins = [
-  { id: '1', name: 'Alice Johnson', email: 'alice@example.com', ward: 'Ward 1', status: 'Online', lastActive: '2 min ago', resultsReviewed: 45 },
-  { id: '2', name: 'Bob Smith', email: 'bob@example.com', ward: 'Ward 2', status: 'Online', lastActive: '5 min ago', resultsReviewed: 38 },
-  { id: '3', name: 'Carol White', email: 'carol@example.com', ward: 'Ward 3', status: 'Online', lastActive: '1 min ago', resultsReviewed: 52 },
-  { id: '4', name: 'David Brown', email: 'david@example.com', ward: 'Ward 4', status: 'Offline', lastActive: '30 min ago', resultsReviewed: 28 },
-  { id: '5', name: 'Eva Green', email: 'eva@example.com', ward: 'Ward 5', status: 'Online', lastActive: '3 min ago', resultsReviewed: 41 },
-  { id: '6', name: 'Frank Miller', email: 'frank@example.com', ward: 'Ward 6', status: 'Online', lastActive: '8 min ago', resultsReviewed: 35 },
-  { id: '7', name: 'Grace Lee', email: 'grace@example.com', ward: 'Ward 7', status: 'Online', lastActive: '4 min ago', resultsReviewed: 33 },
-  { id: '8', name: 'Henry Davis', email: 'henry@example.com', ward: 'Ward 8', status: 'Online', lastActive: '1 min ago', resultsReviewed: 47 },
-];
+interface WardAdmin {
+  id: string;
+  name: string;
+  email: string;
+  wardId: string;
+  wardName: string;
+  status: 'Online' | 'Offline';
+  lastActive: string;
+  resultsReviewed: number;
+}
 
-const recentIncidents = [
-  { id: '1', type: 'Violence', ward: 'Ward 3', pollingUnit: 'PU-012', reporter: 'Agent Mike', time: '15 min ago', severity: 'critical', status: 'pending' },
-  { id: '2', type: 'Disruption', ward: 'Ward 5', pollingUnit: 'PU-045', reporter: 'Agent Sarah', time: '30 min ago', severity: 'high', status: 'investigating' },
-  { id: '3', type: 'Irregularity', ward: 'Ward 1', pollingUnit: 'PU-003', reporter: 'Agent John', time: '45 min ago', severity: 'medium', status: 'investigating' },
-  { id: '4', type: 'Fraud', ward: 'Ward 7', pollingUnit: 'PU-078', reporter: 'Agent Lisa', time: '1 hour ago', severity: 'critical', status: 'pending' },
-  { id: '5', type: 'Disruption', ward: 'Ward 4', pollingUnit: 'PU-034', reporter: 'Agent Tom', time: '1.5 hours ago', severity: 'high', status: 'resolved' },
-];
+interface Incident {
+  id: string;
+  type: string;
+  ward: string;
+  pollingUnit: string;
+  reporter: string;
+  severity: string;
+  status: string;
+  time: string;
+}
 
-const votesSummary = [
-  { party: 'Party A', votes: 45230, percentage: 42, color: 'bg-blue-500' },
-  { party: 'Party B', votes: 38450, percentage: 36, color: 'bg-green-500' },
-  { party: 'Party C', votes: 15890, percentage: 15, color: 'bg-orange-500' },
-  { party: 'Others', votes: 7520, percentage: 7, color: 'bg-gray-400' },
-];
+interface ZoneStats {
+  totalWards: number;
+  totalPollingUnits: number;
+  totalAgents: number;
+  activeAgents: number;
+  totalResults: number;
+  pendingResults: number;
+  approvedResults: number;
+  rejectedResults: number;
+  totalIncidents: number;
+  criticalIncidents: number;
+  resultsProgress: number;
+}
 
 export default function ZonalAdminDashboard() {
   const { user } = useAuth();
+  const router = useRouter();
+  const { toast } = useToast();
   const [selectedWard, setSelectedWard] = useState<string>('all');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [usingDemoData, setUsingDemoData] = useState(false);
 
-  const getInitials = (name: string) => {
-    return name.split(' ').map(n => n[0]).join('').toUpperCase();
+  // Messaging Modal State
+  const [showMessagingModal, setShowMessagingModal] = useState(false);
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
+  const [selectedContactName, setSelectedContactName] = useState<string>('');
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+
+  // State for data
+  const [stats, setStats] = useState<ZoneStats>({
+    totalWards: 0,
+    totalPollingUnits: 0,
+    totalAgents: 0,
+    activeAgents: 0,
+    totalResults: 0,
+    pendingResults: 0,
+    approvedResults: 0,
+    rejectedResults: 0,
+    totalIncidents: 0,
+    criticalIncidents: 0,
+    resultsProgress: 0,
+  });
+  const [wards, setWards] = useState<Ward[]>([]);
+  const [wardAdmins, setWardAdmins] = useState<WardAdmin[]>([]);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [votesSummary, setVotesSummary] = useState<any[]>([]);
+  const [totalVotes, setTotalVotes] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+
+  // Fetch unread message count
+  const fetchUnreadCount = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`${API_BASE_URL}/admin/messages/unread-count`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setUnreadMessageCount(data.unreadCount || 0);
+      }
+    } catch (error) {
+      console.error('Error fetching unread count:', error);
+    }
+  };
+
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+
+  // Fetch all data
+  const fetchData = useCallback(async (showLoading = true) => {
+    if (showLoading) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
+    setError(null);
+
+    try {
+      const zoneId = user?.zoneId;
+      
+      if (!zoneId) {
+        throw new Error('Zone ID not found');
+      }
+
+      // Fetch zone stats
+      const statsResponse = await apiClient.get<{ success: boolean; stats: any }>(
+        `/admin/zone/${zoneId}/stats`
+      );
+      
+      console.log('📡 Stats Response:', statsResponse);
+
+      if (statsResponse.success && statsResponse.stats) {
+        const s = statsResponse.stats;
+        setStats({
+          totalWards: s.totalWards || 0,
+          totalPollingUnits: s.totalPollingUnits || 0,
+          totalAgents: s.totalAgents || 0,
+          activeAgents: s.activeAgents || 0,
+          totalResults: s.totalResults || 0,
+          pendingResults: s.pendingResults || 0,
+          approvedResults: s.approvedResults || 0,
+          rejectedResults: s.rejectedResults || 0,
+          totalIncidents: s.totalIncidents || 0,
+          criticalIncidents: s.criticalIncidents || 0,
+          resultsProgress: s.resultsProgress || 0,
+        });
+      }
+
+      // Fetch wards
+      const wardsResponse = await apiClient.get<{ success: boolean; wards: any[] }>(
+        `/admin/zone/${zoneId}/wards`
+      );
+      
+      console.log('📡 Wards Response:', wardsResponse);
+
+      if (wardsResponse.success && wardsResponse.wards) {
+        setWards(wardsResponse.wards);
+      }
+
+      // Fetch ward admins
+      const adminsResponse = await apiClient.get<{ success: boolean; wardAdmins: any[] }>(
+        `/admin/zone/${zoneId}/ward-admins`
+      );
+      
+      console.log('📡 Ward Admins Response:', adminsResponse);
+
+      if (adminsResponse.success && adminsResponse.wardAdmins) {
+        setWardAdmins(adminsResponse.wardAdmins);
+      }
+
+      // Fetch incidents
+      const incidentsResponse = await apiClient.get<{ success: boolean; incidents: any[] }>(
+        `/admin/zone/${zoneId}/incidents`
+      );
+      
+      console.log('📡 Incidents Response:', incidentsResponse);
+
+      if (incidentsResponse.success && incidentsResponse.incidents) {
+        setIncidents(incidentsResponse.incidents);
+      }
+
+      // Fetch vote summary
+      const voteResponse = await apiClient.get<{ success: boolean; summary: any[]; totalVotes: number }>(
+        `/admin/zone/${zoneId}/vote-summary`
+      );
+      
+      console.log('📡 Vote Summary Response:', voteResponse);
+
+      if (voteResponse.success) {
+        setVotesSummary(voteResponse.summary || []);
+        setTotalVotes(voteResponse.totalVotes || 0);
+        setLastUpdated(new Date().toISOString());
+      }
+
+      // Fetch unread message count
+      await fetchUnreadCount();
+
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      setError('Failed to load dashboard data');
+      // If API fails, try using demo data
+      loadDemoData();
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [user]);
+
+  // Load demo data for fallback
+  const loadDemoData = () => {
+    setUsingDemoData(true);
+    setStats({
+      totalWards: 5,
+      totalPollingUnits: 45,
+      totalAgents: 38,
+      activeAgents: 29,
+      totalResults: 32,
+      pendingResults: 8,
+      approvedResults: 20,
+      rejectedResults: 4,
+      totalIncidents: 12,
+      criticalIncidents: 3,
+      resultsProgress: 71,
+    });
+
+    setWards([
+      { id: '1', name: 'Ward 1', code: 'W001', pollingUnits: 8, agents: 5, activeAgents: 4, resultsSubmitted: 6, pendingResults: 2, incidents: 2, adminName: 'John Doe', progress: 75 },
+      { id: '2', name: 'Ward 2', code: 'W002', pollingUnits: 6, agents: 4, activeAgents: 3, resultsSubmitted: 4, pendingResults: 1, incidents: 1, adminName: 'Jane Smith', progress: 67 },
+      { id: '3', name: 'Ward 3', code: 'W003', pollingUnits: 4, agents: 3, activeAgents: 2, resultsSubmitted: 2, pendingResults: 0, incidents: 0, adminName: 'Bob Johnson', progress: 50 },
+    ]);
+
+    setWardAdmins([
+      { id: '1', name: 'John Doe', email: 'john@example.com', wardId: '1', wardName: 'Ward 1', status: 'Online', lastActive: '2 min ago', resultsReviewed: 12 },
+      { id: '2', name: 'Jane Smith', email: 'jane@example.com', wardId: '2', wardName: 'Ward 2', status: 'Offline', lastActive: '1 hour ago', resultsReviewed: 8 },
+    ]);
+
+    setIncidents([
+      { id: '1', type: 'Violence', ward: 'Ward 1', pollingUnit: 'PU-001', reporter: 'Agent 1', severity: 'critical', status: 'Investigating', time: '2 hours ago' },
+      { id: '2', type: 'Fraud', ward: 'Ward 2', pollingUnit: 'PU-003', reporter: 'Agent 2', severity: 'high', status: 'Pending', time: '5 hours ago' },
+    ]);
+
+    setVotesSummary([
+      { party: 'APC', votes: 4500, percentage: 45, color: 'bg-blue-500' },
+      { party: 'PDP', votes: 3200, percentage: 32, color: 'bg-green-500' },
+      { party: 'LP', votes: 1800, percentage: 18, color: 'bg-red-500' },
+    ]);
+    setTotalVotes(9500);
+  };
+
+  // Initial load
+  useEffect(() => {
+    if (user?.zoneId) {
+      fetchData(true);
+    }
+  }, [fetchData, user?.zoneId]);
+
+  // Handle refresh
+  const handleRefresh = async () => {
+    setUsingDemoData(false);
+    await fetchData(false);
+  };
+
+  // Navigation handlers
+  const handleViewWardDetails = (wardId: string) => {
+    router.push(`/admin/ward/${wardId}`);
+  };
+
+  const handleViewWardResults = (wardId: string) => {
+    router.push(`/admin/ward/${wardId}/results`);
+  };
+
+  const handleViewWardIncidents = (wardId: string) => {
+    router.push(`/admin/ward/${wardId}/incidents`);
+  };
+
+  // Updated: Open messaging modal instead of navigating
+  const handleContactWardAdmin = (adminId: string | null | undefined, adminName: any) => {
+    if (!adminId) {
+      toast({
+        title: "No Admin Assigned",
+        description: "This ward does not have an admin assigned yet.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    const name = typeof adminName === 'string' ? adminName : 'Admin';
+    setSelectedContactId(adminId);
+    setSelectedContactName(name);
+    setShowMessagingModal(true);
+  };
+
+  // Handle opening messaging modal from header
+  const handleOpenMessaging = () => {
+    // If there's a selected contact from the ward admin, use that
+    if (selectedContactId && isValidUUID(selectedContactId)) {
+      setShowMessagingModal(true);
+    } else {
+      // Otherwise open with no specific contact selected
+      setSelectedContactId(null);
+      setSelectedContactName('');
+      setShowMessagingModal(true);
+    }
+  };
+
+  const handleViewAdminProfile = (adminId: string) => {
+    router.push(`/admin/users/${adminId}`);
+  };
+
+  const handleViewAdminActivity = (adminId: string) => {
+    router.push(`/admin/ward-admins/${adminId}/activity`);
+  };
+
+  const handleSendMessage = (adminId: string, adminName: string) => {
+    setSelectedContactId(adminId);
+    setSelectedContactName(adminName);
+    setShowMessagingModal(true);
+  };
+
+  const handleViewIncident = (incidentId: string) => {
+    router.push(`/admin/incidents/${incidentId}`);
+  };
+
+  // Helper functions
+  const getInitials = (name: any): string => {
+    if (!name) return '??';
+    if (typeof name === 'string') {
+      return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+    }
+    return '??';
+  };
+
+  const safeString = (value: any, defaultValue: string = 'Unknown'): string => {
+    if (!value) return defaultValue;
+    if (typeof value === 'string') return value;
+    if (typeof value === 'object' && value.name) return value.name;
+    return String(value) || defaultValue;
   };
 
   const getSeverityColor = (severity: string) => {
-    switch (severity) {
+    switch (severity?.toLowerCase()) {
       case 'critical': return 'bg-red-100 text-red-800';
       case 'high': return 'bg-orange-100 text-orange-800';
       case 'medium': return 'bg-yellow-100 text-yellow-800';
@@ -218,7 +431,7 @@ export default function ZonalAdminDashboard() {
   };
 
   const getStatusColor = (status: string) => {
-    switch (status) {
+    switch (status?.toLowerCase()) {
       case 'pending': return 'bg-yellow-100 text-yellow-800';
       case 'investigating': return 'bg-blue-100 text-blue-800';
       case 'resolved': return 'bg-green-100 text-green-800';
@@ -226,14 +439,104 @@ export default function ZonalAdminDashboard() {
     }
   };
 
+  const filteredWards = selectedWard === 'all' 
+    ? wards 
+    : wards.filter(w => w.id === selectedWard);
+
+  // Loading skeleton
+  if (loading) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <AdminHeader 
+          title="Zonal Admin Dashboard" 
+          subtitle="Loading zone data..."
+        />
+        <div className="flex-1 p-4 md:p-6 space-y-6">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {[1,2,3,4].map(i => (
+              <Card key={i}>
+                <CardContent className="pt-6">
+                  <Skeleton className="h-16 w-full" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          <Skeleton className="h-96 w-full" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col min-h-screen">
       <AdminHeader 
         title="Zonal Admin Dashboard" 
-        subtitle={`Managing Zone: ${user?.zoneId || 'Zone 1'}`}
+        subtitle={`Managing Zone: ${user?.zoneName || user?.zoneId || 'Zone'}`}
+        actions={
+          <div className="flex items-center gap-2">
+            {/* Notifications Panel */}
+            <NotificationsPanel 
+              userId={user?.id} 
+              userRole={user?.role}
+              wardId={user?.wardId}
+            />
+            
+            {/* Messages Button */}
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleOpenMessaging}
+              className="relative"
+            >
+              <MessageSquare className="h-4 w-4 mr-2" />
+              Messages
+              {unreadMessageCount > 0 && (
+                <Badge className="absolute -top-2 -right-2 h-5 w-5 rounded-full p-0 flex items-center justify-center bg-destructive text-white text-[10px]">
+                  {unreadMessageCount > 9 ? '9+' : unreadMessageCount}
+                </Badge>
+              )}
+            </Button>
+            
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleRefresh}
+              disabled={refreshing}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+              {refreshing ? 'Refreshing...' : 'Refresh'}
+            </Button>
+          </div>
+        }
       />
       
       <div className="flex-1 p-4 md:p-6 space-y-6">
+        {/* Header with Refresh */}
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-bold">Overview</h2>
+            <Badge variant="outline" className="ml-2">
+              {usingDemoData ? 'Demo Mode' : 'Live'}
+            </Badge>
+          </div>
+        </div>
+
+        {/* Error Message */}
+        {error && !usingDemoData && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-red-600" />
+            <p className="text-red-600">{error}</p>
+          </div>
+        )}
+
+        {/* Demo Mode Warning */}
+        {usingDemoData && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-yellow-600" />
+            <p className="text-yellow-600">Using demo data - Backend connection not available</p>
+          </div>
+        )}
+
         {/* Stats Overview */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card>
@@ -242,9 +545,9 @@ export default function ZonalAdminDashboard() {
               <Building2 className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{zoneStats.totalWards}</div>
+              <div className="text-2xl font-bold">{stats.totalWards}</div>
               <p className="text-xs text-muted-foreground">
-                {zoneStats.totalPollingUnits} polling units
+                {stats.totalPollingUnits} polling units
               </p>
             </CardContent>
           </Card>
@@ -255,11 +558,11 @@ export default function ZonalAdminDashboard() {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{zoneStats.activeAgents}</div>
+              <div className="text-2xl font-bold">{stats.activeAgents}</div>
               <div className="flex items-center gap-1 text-xs">
                 <span className="text-green-600 flex items-center">
                   <ArrowUpRight className="h-3 w-3" />
-                  {Math.round((zoneStats.activeAgents / zoneStats.totalAgents) * 100)}% online
+                  {stats.totalAgents > 0 ? Math.round((stats.activeAgents / stats.totalAgents) * 100) : 0}% online
                 </span>
               </div>
             </CardContent>
@@ -271,13 +574,13 @@ export default function ZonalAdminDashboard() {
               <FileText className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{zoneStats.resultsProgress}%</div>
+              <div className="text-2xl font-bold">{stats.resultsProgress}%</div>
               <Progress 
-                value={zoneStats.resultsProgress} 
+                value={stats.resultsProgress} 
                 className="h-2 mt-2"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                {zoneStats.totalResults} of {zoneStats.totalPollingUnits} submitted
+                {stats.totalResults} of {stats.totalPollingUnits} submitted
               </p>
             </CardContent>
           </Card>
@@ -288,10 +591,10 @@ export default function ZonalAdminDashboard() {
               <AlertTriangle className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{zoneStats.totalIncidents}</div>
+              <div className="text-2xl font-bold">{stats.totalIncidents}</div>
               <p className="text-xs text-red-600 flex items-center">
                 <AlertTriangle className="h-3 w-3 mr-1" />
-                {zoneStats.criticalIncidents} critical
+                {stats.criticalIncidents} critical
               </p>
             </CardContent>
           </Card>
@@ -306,7 +609,7 @@ export default function ZonalAdminDashboard() {
               </div>
               <div>
                 <p className="text-sm text-slate-600">Total Results</p>
-                <p className="text-xl font-bold">{zoneStats.totalResults}</p>
+                <p className="text-xl font-bold">{stats.totalResults}</p>
               </div>
             </CardContent>
           </Card>
@@ -318,7 +621,7 @@ export default function ZonalAdminDashboard() {
               </div>
               <div>
                 <p className="text-sm text-yellow-700">Pending</p>
-                <p className="text-xl font-bold text-yellow-900">{zoneStats.pendingResults}</p>
+                <p className="text-xl font-bold text-yellow-900">{stats.pendingResults}</p>
               </div>
             </CardContent>
           </Card>
@@ -330,7 +633,7 @@ export default function ZonalAdminDashboard() {
               </div>
               <div>
                 <p className="text-sm text-green-700">Approved</p>
-                <p className="text-xl font-bold text-green-900">{zoneStats.approvedResults}</p>
+                <p className="text-xl font-bold text-green-900">{stats.approvedResults}</p>
               </div>
             </CardContent>
           </Card>
@@ -342,7 +645,7 @@ export default function ZonalAdminDashboard() {
               </div>
               <div>
                 <p className="text-sm text-red-700">Rejected</p>
-                <p className="text-xl font-bold text-red-900">{zoneStats.rejectedResults}</p>
+                <p className="text-xl font-bold text-red-900">{stats.rejectedResults}</p>
               </div>
             </CardContent>
           </Card>
@@ -354,27 +657,73 @@ export default function ZonalAdminDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>Vote Summary (Approved Results)</CardTitle>
-                <CardDescription>Aggregated votes from all approved results in your zone</CardDescription>
+                <CardDescription>
+                  Aggregated votes from all approved results in your zone
+                  {lastUpdated && !usingDemoData && (
+                    <span className="block text-xs mt-1">
+                      Last updated: {new Date(lastUpdated).toLocaleString()}
+                    </span>
+                  )}
+                </CardDescription>
               </div>
-              <Button variant="outline" size="sm">
-                <Download className="h-4 w-4 mr-2" />
-                Export Report
-              </Button>
+              <div className="flex gap-2">
+                {totalVotes > 0 && (
+                  <Badge variant="outline" className="px-3 py-1">
+                    Total Votes: {totalVotes.toLocaleString()}
+                  </Badge>
+                )}
+                <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
+                  <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+                <Button variant="outline" size="sm">
+                  <Download className="h-4 w-4 mr-2" />
+                  Export
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 md:grid-cols-4">
-              {votesSummary.map((item, idx) => (
-                <div key={idx} className="p-4 border rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium">{item.party}</span>
-                    <Badge variant="secondary">{item.percentage}%</Badge>
+            {votesSummary.length > 0 ? (
+              <div className="grid gap-4 md:grid-cols-4">
+                {votesSummary.map((item, idx) => (
+                  <div key={idx} className="p-4 border rounded-lg hover:shadow-md transition-shadow">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-semibold text-lg">{item.party}</span>
+                      <Badge variant="secondary" className="font-mono">
+                        {item.percentage}%
+                      </Badge>
+                    </div>
+                    <p className="text-3xl font-bold mb-2">{item.votes.toLocaleString()}</p>
+                    <Progress 
+                      value={item.percentage} 
+                      className={`h-2 ${item.color || 'bg-blue-500'}`} 
+                    />
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {totalVotes > 0 ? ((item.votes / totalVotes) * 100).toFixed(1) : 0}% of total
+                    </p>
                   </div>
-                  <p className="text-2xl font-bold">{item.votes.toLocaleString()}</p>
-                  <Progress value={item.percentage} className={`h-2 mt-2 ${item.color}`} />
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 text-muted-foreground">
+                <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p className="text-lg font-medium">No vote data available</p>
+                <p className="text-sm">There are no approved results in your zone yet.</p>
+              </div>
+            )}
+
+            {/* Summary Footer */}
+            {votesSummary.length > 0 && (
+              <div className="mt-6 pt-4 border-t flex justify-between items-center text-sm text-muted-foreground">
+                <span>
+                  Total votes cast: <span className="font-bold text-foreground">{totalVotes.toLocaleString()}</span>
+                </span>
+                <span>
+                  Parties with votes: <span className="font-bold text-foreground">{votesSummary.length}</span>
+                </span>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -384,15 +733,15 @@ export default function ZonalAdminDashboard() {
             <TabsList>
               <TabsTrigger value="wards" className="gap-2">
                 <Building2 className="h-4 w-4" />
-                Wards ({zoneStats.totalWards})
+                Wards ({stats.totalWards})
               </TabsTrigger>
               <TabsTrigger value="ward-admins" className="gap-2">
                 <Users className="h-4 w-4" />
-                Ward Admins
+                Ward Admins ({wardAdmins?.length || 0})
               </TabsTrigger>
               <TabsTrigger value="incidents" className="gap-2">
                 <AlertTriangle className="h-4 w-4" />
-                Incidents ({zoneStats.totalIncidents})
+                Incidents ({stats.totalIncidents})
               </TabsTrigger>
               <TabsTrigger value="analytics" className="gap-2">
                 <BarChart3 className="h-4 w-4" />
@@ -429,84 +778,116 @@ export default function ZonalAdminDashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Ward</TableHead>
-                      <TableHead>Admin</TableHead>
-                      <TableHead>Polling Units</TableHead>
-                      <TableHead>Agents</TableHead>
-                      <TableHead>Results Progress</TableHead>
-                      <TableHead>Pending</TableHead>
-                      <TableHead>Incidents</TableHead>
-                      <TableHead></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {wards.map((ward) => (
-                      <TableRow key={ward.id}>
-                        <TableCell>
-                          <div>
-                            <span className="font-medium">{ward.name}</span>
-                            <p className="text-xs text-muted-foreground">{ward.code}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-6 w-6">
-                              <AvatarFallback className="text-xs">
-                                {getInitials(ward.admin)}
-                              </AvatarFallback>
-                            </Avatar>
-                            {ward.admin}
-                          </div>
-                        </TableCell>
-                        <TableCell>{ward.pollingUnits}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <span className="text-green-600">{ward.activeAgents}</span>
-                            <span className="text-muted-foreground">/</span>
-                            <span>{ward.agents}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="w-32">
-                            <div className="flex items-center justify-between text-xs mb-1">
-                              <span>{ward.resultsSubmitted}/{ward.pollingUnits}</span>
-                              <span>{ward.progress}%</span>
-                            </div>
-                            <Progress value={ward.progress} className="h-2" />
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="bg-yellow-50 text-yellow-700">
-                            {ward.pendingResults}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={ward.incidents > 2 ? 'destructive' : 'secondary'}>
-                            {ward.incidents}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem>View Details</DropdownMenuItem>
-                              <DropdownMenuItem>View Results</DropdownMenuItem>
-                              <DropdownMenuItem>View Incidents</DropdownMenuItem>
-                              <DropdownMenuItem>Contact Admin</DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
+                {wards.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Building2 className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                    <p>No wards found</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Ward</TableHead>
+                        <TableHead>Admin</TableHead>
+                        <TableHead>Polling Units</TableHead>
+                        <TableHead>Agents</TableHead>
+                        <TableHead>Progress</TableHead>
+                        <TableHead>Pending</TableHead>
+                        <TableHead>Incidents</TableHead>
+                        <TableHead></TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredWards.map((ward) => (
+                        <TableRow key={ward.id}>
+                          <TableCell>
+                            <div>
+                              <span className="font-medium">{ward.name}</span>
+                              <p className="text-xs text-muted-foreground">{ward.code}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-6 w-6">
+                                <AvatarFallback className="text-xs">
+                                  {getInitials(ward.adminName || ward.adminId)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span>{safeString(ward.adminName, 'Unassigned')}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>{ward.pollingUnits}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <span className="text-green-600">{ward.activeAgents}</span>
+                              <span className="text-muted-foreground">/</span>
+                              <span>{ward.agents}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="w-32">
+                              <div className="flex items-center justify-between text-xs mb-1">
+                                <span>{ward.resultsSubmitted}/{ward.pollingUnits}</span>
+                                <span>{ward.progress}%</span>
+                              </div>
+                              <Progress value={ward.progress} className="h-2" />
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="bg-yellow-50 text-yellow-700">
+                              {ward.pendingResults}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={ward.incidents > 2 ? 'destructive' : 'secondary'}>
+                              {ward.incidents}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem 
+                                  onClick={() => handleViewWardDetails(ward.id)}
+                                  className="cursor-pointer"
+                                >
+                                  <Eye className="h-4 w-4 mr-2" />
+                                  View Details
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  onClick={() => handleViewWardResults(ward.id)}
+                                  className="cursor-pointer"
+                                >
+                                  <FileText className="h-4 w-4 mr-2" />
+                                  View Results
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  onClick={() => handleViewWardIncidents(ward.id)}
+                                  className="cursor-pointer"
+                                >
+                                  <AlertTriangle className="h-4 w-4 mr-2" />
+                                  View Incidents
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  onClick={() => handleContactWardAdmin(ward.adminId, ward.adminName)}
+                                  className="cursor-pointer"
+                                  disabled={!ward.adminId}
+                                >
+                                  <Mail className="h-4 w-4 mr-2" />
+                                  {ward.adminId ? 'Contact Admin' : 'No Admin Assigned'}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -523,63 +904,88 @@ export default function ZonalAdminDashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Admin</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Ward</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Results Reviewed</TableHead>
-                      <TableHead>Last Active</TableHead>
-                      <TableHead></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {wardAdmins.map((admin) => (
-                      <TableRow key={admin.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-8 w-8">
-                              <AvatarFallback>
-                                {getInitials(admin.name)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="font-medium">{admin.name}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>{admin.email}</TableCell>
-                        <TableCell>{admin.ward}</TableCell>
-                        <TableCell>
-                          <Badge className={admin.status === 'Online' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
-                            {admin.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <CheckCircle className="h-4 w-4 text-green-500" />
-                            {admin.resultsReviewed}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">{admin.lastActive}</TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem>View Profile</DropdownMenuItem>
-                              <DropdownMenuItem>View Activity</DropdownMenuItem>
-                              <DropdownMenuItem>Send Message</DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
+                {wardAdmins && wardAdmins.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Admin</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Ward</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Reviewed</TableHead>
+                        <TableHead>Last Active</TableHead>
+                        <TableHead></TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {wardAdmins.map((admin) => (
+                        <TableRow key={admin.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-8 w-8">
+                                <AvatarFallback>
+                                  {getInitials(admin.name)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="font-medium">{admin.name}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>{admin.email}</TableCell>
+                          <TableCell>{admin.wardName}</TableCell>
+                          <TableCell>
+                            <Badge className={admin.status === 'Online' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                              {admin.status || 'Offline'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <CheckCircle className="h-4 w-4 text-green-500" />
+                              {admin.resultsReviewed || 0}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">{admin.lastActive || 'Unknown'}</TableCell>
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem 
+                                  onClick={() => handleViewAdminProfile(admin.id)}
+                                  className="cursor-pointer"
+                                >
+                                  <Eye className="h-4 w-4 mr-2" />
+                                  View Profile
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  onClick={() => handleViewAdminActivity(admin.id)}
+                                  className="cursor-pointer"
+                                >
+                                  <Activity className="h-4 w-4 mr-2" />
+                                  View Activity
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  onClick={() => handleSendMessage(admin.id, admin.name)}
+                                  className="cursor-pointer"
+                                >
+                                  <MessageSquare className="h-4 w-4 mr-2" />
+                                  Send Message
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Users className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                    <p>No ward admins found</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -606,47 +1012,58 @@ export default function ZonalAdminDashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Ward</TableHead>
-                      <TableHead>Polling Unit</TableHead>
-                      <TableHead>Reporter</TableHead>
-                      <TableHead>Severity</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Time</TableHead>
-                      <TableHead></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {recentIncidents.map((incident) => (
-                      <TableRow key={incident.id}>
-                        <TableCell className="font-medium">{incident.type}</TableCell>
-                        <TableCell>{incident.ward}</TableCell>
-                        <TableCell>{incident.pollingUnit}</TableCell>
-                        <TableCell>{incident.reporter}</TableCell>
-                        <TableCell>
-                          <Badge className={getSeverityColor(incident.severity)}>
-                            {incident.severity}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={getStatusColor(incident.status)}>
-                            {incident.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">{incident.time}</TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="sm">
-                            <Eye className="h-4 w-4 mr-1" />
-                            View
-                          </Button>
-                        </TableCell>
+                {incidents && incidents.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Ward</TableHead>
+                        <TableHead>Polling Unit</TableHead>
+                        <TableHead>Reporter</TableHead>
+                        <TableHead>Severity</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Time</TableHead>
+                        <TableHead></TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {incidents.map((incident) => (
+                        <TableRow key={incident.id}>
+                          <TableCell className="font-medium">{incident.type}</TableCell>
+                          <TableCell>{incident.ward}</TableCell>
+                          <TableCell>{incident.pollingUnit}</TableCell>
+                          <TableCell>{incident.reporter}</TableCell>
+                          <TableCell>
+                            <Badge className={getSeverityColor(incident.severity)}>
+                              {incident.severity}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={getStatusColor(incident.status)}>
+                              {incident.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">{incident.time}</TableCell>
+                          <TableCell>
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => handleViewIncident(incident.id)}
+                            >
+                              <Eye className="h-4 w-4 mr-1" />
+                              View
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <AlertTriangle className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                    <p>No incidents found</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -685,6 +1102,44 @@ export default function ZonalAdminDashboard() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Messaging Modal */}
+      <Dialog open={showMessagingModal} onOpenChange={(open) => {
+        if (!open) {
+          setSelectedContactId(null);
+          setSelectedContactName('');
+        }
+        setShowMessagingModal(open);
+      }}>
+        <DialogContent className="max-w-4xl h-[80vh] max-h-[80vh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5" />
+              {selectedContactName ? `Chat with ${selectedContactName}` : 'Messages'}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedContactName 
+                ? `Send a message to ${selectedContactName}` 
+                : 'View all your conversations'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <MessagingWidget 
+              className="h-full w-full"
+              maxHeight="100%"
+              showHeader={false}
+              key={selectedContactId || 'all-conversations'}
+              initialContactId={selectedContactId || undefined}
+              initialContactName={selectedContactName}
+            />
+          </div>
+          <DialogFooter className="flex-shrink-0">
+            <Button variant="outline" onClick={() => setShowMessagingModal(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

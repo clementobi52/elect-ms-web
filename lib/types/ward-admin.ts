@@ -7,6 +7,8 @@ export interface Party {
 }
 
 export interface PollingAgent {
+  resultsSubmitted: number;
+  updatedAt: string | number | Date;
   id: string;
   name: string;
   email: string;
@@ -50,6 +52,12 @@ export interface PendingResult {
 }
 
 export interface Incident {
+  pollingUnitName: string;
+  polling_unit: any;
+  reporterName: string;
+  reported_by: any;
+  reviewComment: import("react/jsx-runtime").JSX.Element;
+  images: boolean;
   id: string;
   type: string;
   pollingUnit: string;

@@ -61,7 +61,7 @@ interface Agent {
     longitude: number;
   };
   resultsSubmitted?: number;
-  status?: "Online" | "Offline";
+  status: "Online" | "Offline";
   lastActive?: string;
   locationReconciledBy?: string;
   locationReconciledAt?: string;
