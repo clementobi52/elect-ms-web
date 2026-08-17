@@ -11,7 +11,6 @@ import { Badge } from '@/components/ui/badge';
 import { RefreshCw, MapPin, Users, AlertTriangle, AlertCircle, MessageSquare, Bell } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { Card, CardContent } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
 import {
   Dialog,
@@ -41,6 +40,7 @@ import {
   PollingUnit,
   Incident 
 } from '@/lib/types/ward-admin';
+import { ROLES } from '@/lib/types';
 
 // UUID validation
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -55,7 +55,7 @@ export default function WardAdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [wardName, setWardName] = useState<string>('');
-  const isSystemAdmin = user?.role === 'System Admin';
+  const isSystemAdmin = user?.role === ROLES.SYSTEM_ADMIN;
   
   // Messaging Modal State
   const [showMessagingModal, setShowMessagingModal] = useState(false);

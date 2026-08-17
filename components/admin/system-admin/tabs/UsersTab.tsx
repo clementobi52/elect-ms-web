@@ -33,7 +33,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, MoreVertical, Eye, Edit, Trash2, UserPlus } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Search, MoreVertical, Eye, Edit, Trash2, UserPlus, MapPin, CheckCircle, XCircle } from 'lucide-react';
 import { CreateUserDialog } from '../dialogs/CreateUserDialog';
 import { ViewUserDialog } from '../dialogs/ViewUserDialog';
 import { EditUserDialog } from '../dialogs/EditUserDialog';
@@ -76,9 +83,11 @@ export const UsersTab: React.FC<UsersTabProps> = ({
 }) => {
   const [viewingUser, setViewingUser] = useState<User | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [assignmentUser, setAssignmentUser] = useState<User | null>(null);
   const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
   const [isViewUserOpen, setIsViewUserOpen] = useState(false);
   const [isEditUserOpen, setIsEditUserOpen] = useState(false);
+  const [isAssignmentViewOpen, setIsAssignmentViewOpen] = useState(false);
 
   const handleViewUser = (user: User) => {
     setViewingUser(user);
@@ -92,6 +101,180 @@ export const UsersTab: React.FC<UsersTabProps> = ({
 
   const handleDeleteUser = (user: User) => {
     onDelete('user', user.id, user.name);
+  };
+
+  const handleAssignmentView = (user: User) => {
+    setAssignmentUser(user);
+    setIsAssignmentViewOpen(true);
+  };
+
+  // Helper function to get assignment details based on user role
+  const getAssignmentDetails = (user: User) => {
+    if (!user) return null;
+
+    switch (user.role) {
+      case 'Polling Agent':
+        return {
+          type: 'Polling Unit',
+          id: user.pollingUnitId,
+          name: user.pollingUnitName || 'Not Assigned',
+          details: `Agent assigned to monitor polling unit`,
+        };
+      case 'Ward Admin':
+        return {
+          type: 'Ward',
+          id: user.wardId,
+          name: user.wardName || 'Not Assigned',
+          details: `Administrator for ward`,
+        };
+      case 'Zone Admin':
+        return {
+          type: 'Zone',
+          id: user.zoneId,
+          name: user.zoneName || 'Not Assigned',
+          details: `Administrator for zone`,
+        };
+      default:
+        return {
+          type: 'System',
+          id: null,
+          name: 'System-wide',
+          details: `System administrator with full access`,
+        };
+    }
+  };
+
+  // Assignment View Dialog Component
+  const AssignmentViewDialog = () => {
+    if (!assignmentUser) return null;
+    
+    const assignment = getAssignmentDetails(assignmentUser);
+    const isAssigned = assignment && assignment.id && assignment.name !== 'Not Assigned';
+
+    return (
+      <Dialog open={isAssignmentViewOpen} onOpenChange={setIsAssignmentViewOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MapPin className="h-5 w-5 text-primary" />
+              Assignment Details
+            </DialogTitle>
+            <DialogDescription>
+              View and manage assignment for {assignmentUser.name}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* User Info */}
+            <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+              <Avatar className="h-10 w-10">
+                <AvatarFallback>{getInitials(assignmentUser.name)}</AvatarFallback>
+              </Avatar>
+              <div>
+                <p className="font-medium">{assignmentUser.name}</p>
+                <p className="text-sm text-muted-foreground">{assignmentUser.email}</p>
+                <Badge className={getRoleBadgeColor(assignmentUser.role)}>
+                  {assignmentUser.role}
+                </Badge>
+              </div>
+            </div>
+
+            {/* Assignment Status */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Assignment Status</span>
+                {isAssigned ? (
+                  <Badge variant="success" className="flex items-center gap-1">
+                    <CheckCircle className="h-3 w-3" />
+                    Assigned
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" className="flex items-center gap-1">
+                    <XCircle className="h-3 w-3" />
+                    Not Assigned
+                  </Badge>
+                )}
+              </div>
+            </div>
+
+            {/* Assignment Type */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Assignment Type</label>
+              <div className="p-3 bg-muted/30 rounded-lg">
+                <p className="text-sm">{assignment?.type || 'N/A'}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {assignment?.details || ''}
+                </p>
+              </div>
+            </div>
+
+            {/* Assignment Details */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Assigned To</label>
+              <div className="p-3 bg-primary/5 border border-primary/10 rounded-lg">
+                {isAssigned ? (
+                  <>
+                    <p className="font-medium">{assignment?.name}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      ID: {assignment?.id}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-muted-foreground text-sm">
+                    This user is not currently assigned to any {assignment?.type?.toLowerCase()}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Additional Info based on role */}
+            {assignmentUser.role === 'Polling Agent' && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Agent Details</label>
+                <div className="p-3 bg-muted/30 rounded-lg space-y-1">
+                  <p className="text-sm">
+                    <span className="text-muted-foreground">Status:</span>{' '}
+                    {assignmentUser.status || 'Active'}
+                  </p>
+                  {assignmentUser.lastActive && (
+                    <p className="text-sm">
+                      <span className="text-muted-foreground">Last Active:</span>{' '}
+                      {new Date(assignmentUser.lastActive).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-2 pt-4 border-t">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setIsAssignmentViewOpen(false);
+                  handleEditUser(assignmentUser);
+                }}
+              >
+                <Edit className="h-4 w-4 mr-2" />
+                Edit Assignment
+              </Button>
+              <Button
+                variant="default"
+                className="flex-1"
+                onClick={() => {
+                  setIsAssignmentViewOpen(false);
+                  // Navigate to assignment management or open assignment dialog
+                }}
+              >
+                <MapPin className="h-4 w-4 mr-2" />
+                Manage Assignment
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
   };
 
   return (
@@ -145,7 +328,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                 <TableHead>Location</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
-                <TableHead></TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -182,6 +365,10 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                         <DropdownMenuItem onClick={() => handleViewUser(user)}>
                           <Eye className="h-4 w-4 mr-2" />
                           View Details
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleAssignmentView(user)}>
+                          <MapPin className="h-4 w-4 mr-2" />
+                          Assignment View
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleEditUser(user)}>
                           <Edit className="h-4 w-4 mr-2" />
@@ -223,12 +410,19 @@ export const UsersTab: React.FC<UsersTabProps> = ({
         getLocationDisplay={getLocationDisplay}
       />
 
-      <EditUserDialog
-        open={isEditUserOpen}
-        onOpenChange={setIsEditUserOpen}
-        user={editingUser}
-        onSuccess={onRefresh}
-      />
+  <EditUserDialog
+  open={isEditUserOpen}
+  onOpenChange={setIsEditUserOpen}
+  user={editingUser}
+  onSuccess={onRefresh}
+ zones={zones}
+wards={wards}
+pollingUnits={pollingUnits}
+  onRefresh={onRefresh}
+/>
+
+      {/* Assignment View Dialog */}
+      <AssignmentViewDialog />
     </>
   );
 };

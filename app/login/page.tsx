@@ -33,9 +33,9 @@ function LoginForm() {
   useEffect(() => {
     if (!authLoading && isAuthenticated && user) {
       // Check if user has admin role
-      if (ADMIN_ROLES.includes(user.role as any)) {
+      if (ADMIN_ROLES.includes(user.role as AdminRole)) {
         // Redirect based on role
-        switch (user.role) {
+        switch (user.role as AdminRole) {
           case 'Ward Admin':
             router.push('/admin/ward');
             break;
@@ -43,7 +43,7 @@ function LoginForm() {
             router.push('/admin/zone');
             break;
           case 'Situation Room Admin':
-            router.push('/admin/situation-room');
+            router.push('/admin/situation');
             break;
           case 'System Admin':
             router.push('/admin/system');

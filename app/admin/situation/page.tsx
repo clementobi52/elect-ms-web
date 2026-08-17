@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useSituationRoomData } from '@/hooks/useSituationRoomData';
+import { getSocket, onSocketMessage, onConnectionChange, sendSocketMessage } from '@/lib/socket-service';
 import AdminHeader from '@/components/admin/AdminHeader';
 import { IncidentHeatmap } from '@/components/admin/situation-room/IncidentHeatmap';
 import { 
@@ -23,7 +24,11 @@ import {
   Radio,
   AlertCircle,
   BarChart3,
-  PieChart
+  PieChart,
+  Wifi,
+  WifiOff,
+  Bell,
+  BellRing
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -47,6 +52,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from '@/components/ui/use-toast';
 
 // Helper function to safely convert any value to string
 const safeString = (value: any, defaultValue: string = 'Unknown'): string => {
@@ -78,6 +84,10 @@ export default function SituationRoomDashboard() {
   const [isLive, setIsLive] = useState(true);
   const [selectedZone, setSelectedZone] = useState<string>('all');
   const [activeTab, setActiveTab] = useState<string>('incidents');
+  const [isSocketConnected, setIsSocketConnected] = useState(false);
+  const [socketId, setSocketId] = useState<string | null>(null);
+  const [notificationCount, setNotificationCount] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
   
   const { 
     stats,
@@ -88,30 +98,268 @@ export default function SituationRoomDashboard() {
     loading,
     refreshing,
     error,
-    usingDemoData,
     lastUpdated,
-    refreshData 
+    refreshData,
+    updateIncidents,
+    addActivity,
+    updateStats
   } = useSituationRoomData({
-    autoRefresh: isLive,
-    refreshInterval: 30000
+    autoRefresh: false, // Disable auto-refresh, use WebSocket instead
+    refreshInterval: 0
   });
+
+  // Socket event handlers
+  const handleNewIncident = useCallback((data: any) => {
+    console.log('📨 New incident via socket:', data);
+    
+    // Transform to match Incident type
+    const newIncident = {
+      id: data.id || `inc-${Date.now()}`,
+      type: data.type || 'Unknown',
+      description: data.description || 'No description',
+      severity: data.severity || 'medium',
+      status: data.status || 'pending',
+      pollingUnitName: data.pollingUnitName || data.pollingUnit?.name || 'Unknown',
+      reporterName: data.reporterName || data.reporter?.name || 'Unknown',
+      latitude: data.latitude || data.pollingUnit?.latitude,
+      longitude: data.longitude || data.pollingUnit?.longitude,
+      time: data.time || data.createdAt || new Date().toISOString(),
+      createdAt: data.createdAt || new Date().toISOString(),
+      zoneName: data.zoneName || data.pollingUnit?.ward?.zone?.name,
+      wardName: data.wardName || data.pollingUnit?.ward?.name,
+    };
+
+    // Update incidents
+    updateIncidents([newIncident, ...incidents]);
+    
+    // Add to activity feed
+    addActivity({
+      id: `act-${Date.now()}`,
+      type: 'incident',
+      message: `🚨 New ${newIncident.severity} incident reported: ${newIncident.type}`,
+      time: new Date().toISOString(),
+      icon: AlertTriangle,
+      severity: newIncident.severity
+    });
+
+    // Show toast notification
+    toast({
+      title: '🚨 New Incident Reported',
+      description: `${newIncident.type} - ${newIncident.description?.substring(0, 50)}...`,
+      duration: 5000,
+      variant: newIncident.severity === 'critical' ? 'destructive' : 'default',
+    });
+
+    setNotificationCount(prev => prev + 1);
+  }, [incidents, updateIncidents, addActivity]);
+
+  const handleIncidentUpdate = useCallback((data: any) => {
+    console.log('📨 Incident update via socket:', data);
+    
+    // Update the incident in the list
+    const updatedIncidents = incidents.map(inc => 
+      inc.id === data.id ? { ...inc, ...data } : inc
+    );
+    
+    updateIncidents(updatedIncidents);
+
+    // Add to activity feed
+    addActivity({
+      id: `act-${Date.now()}`,
+      type: 'incident',
+      message: `📝 Incident ${data.id} updated: ${data.status || 'status changed'}`,
+      time: new Date().toISOString(),
+      icon: AlertTriangle,
+    });
+
+    toast({
+      title: '📝 Incident Updated',
+      description: `Incident ${data.id} status changed to ${data.status || 'updated'}`,
+      duration: 3000,
+    });
+
+    setNotificationCount(prev => prev + 1);
+  }, [incidents, updateIncidents, addActivity]);
+
+  const handleIncidentRemoved = useCallback((data: any) => {
+    console.log('📨 Incident removed via socket:', data);
+    
+    // Remove the incident from the list
+    const filteredIncidents = incidents.filter(inc => inc.id !== data.id);
+    updateIncidents(filteredIncidents);
+
+    // Add to activity feed
+    addActivity({
+      id: `act-${Date.now()}`,
+      type: 'incident',
+      message: `🗑️ Incident ${data.id} removed`,
+      time: new Date().toISOString(),
+      icon: XCircle,
+    });
+
+    toast({
+      title: '🗑️ Incident Removed',
+      description: `Incident ${data.id} has been removed`,
+      duration: 3000,
+    });
+
+    setNotificationCount(prev => prev + 1);
+  }, [incidents, updateIncidents, addActivity]);
+
+  const handleStatsUpdate = useCallback((data: any) => {
+    console.log('📨 Stats update via socket:', data);
+    updateStats(data);
+    
+    toast({
+      title: '📊 Statistics Updated',
+      description: 'Incident statistics have been refreshed',
+      duration: 2000,
+    });
+  }, [updateStats]);
+
+  const handleBulkUpdate = useCallback(() => {
+    console.log('📨 Bulk update via socket - refreshing data...');
+    refreshData(false);
+    
+    toast({
+      title: '🔄 Data Refreshed',
+      description: 'All data has been updated',
+      duration: 2000,
+    });
+  }, [refreshData]);
+
+  // Setup WebSocket listeners
+  useEffect(() => {
+    // Get socket instance
+    const socket = getSocket();
+
+    // Connection status listener
+    const unsubscribeConnection = onConnectionChange((connected) => {
+      setIsSocketConnected(connected);
+      if (connected) {
+        const sock = getSocket();
+        setSocketId(sock?.id || null);
+        console.log('✅ WebSocket connected to situation room');
+        // Re-fetch data on reconnect
+        refreshData(false);
+        toast({
+          title: '✅ Connected',
+          description: 'Real-time updates are now active',
+          duration: 2000,
+        });
+      } else {
+        console.log('🔌 WebSocket disconnected');
+        setSocketId(null);
+        toast({
+          title: '⚠️ Disconnected',
+          description: 'Real-time updates are paused. Reconnecting...',
+          duration: 3000,
+          variant: 'destructive',
+        });
+      }
+    });
+
+    // Message listener for incident events
+    const unsubscribeMessages = onSocketMessage((event, data) => {
+      switch (event) {
+        case 'incident:new':
+          handleNewIncident(data);
+          break;
+        case 'incident:update':
+          handleIncidentUpdate(data);
+          break;
+        case 'incident:remove':
+          handleIncidentRemoved(data);
+          break;
+        case 'incident:bulk':
+          handleBulkUpdate();
+          break;
+        case 'stats:update':
+          handleStatsUpdate(data);
+          break;
+        default:
+          console.log(`📨 Unhandled socket event: ${event}`, data);
+          break;
+      }
+    });
+
+    // Send subscription message
+    if (socket && socket.connected) {
+      sendSocketMessage('subscribe', { channel: 'situation-room' });
+    }
+
+    // Cleanup
+    return () => {
+      unsubscribeConnection();
+      unsubscribeMessages();
+    };
+  }, [handleNewIncident, handleIncidentUpdate, handleIncidentRemoved, handleStatsUpdate, handleBulkUpdate, refreshData]);
+
+  // Toggle live updates
+  const toggleLive = () => {
+    setIsLive(!isLive);
+    if (!isLive) {
+      // Reconnect logic
+      refreshData(false);
+      toast({
+        title: '🔄 Live Updates Resumed',
+        description: 'Real-time updates are now active',
+        duration: 2000,
+      });
+    } else {
+      toast({
+        title: '⏸️ Live Updates Paused',
+        description: 'Real-time updates are paused',
+        duration: 2000,
+      });
+    }
+  };
+
+  // Reset notification count when viewed
+  useEffect(() => {
+    if (activeTab === 'incidents') {
+      setNotificationCount(0);
+    }
+  }, [activeTab]);
 
   // Safely process incidents
   const safeIncidents = Array.isArray(incidents)
-    ? incidents.map(inc => ({
-        ...inc,
-        id: inc?.id || `incident-${Math.random()}`,
-        type: safeString(inc?.type, 'Unknown'),
-        description: safeString(inc?.description, 'No description'),
-        zone: safeString(inc?.zone, 'Unknown Zone'),
-        zoneId: safeString(inc?.zoneId),
-        ward: safeString(inc?.ward, 'Unknown Ward'),
-        severity: safeString(inc?.severity, 'medium').toLowerCase(),
-        status: safeString(inc?.status, 'pending').toLowerCase(),
-        time: safeString(inc?.time, 'Just now'),
-        latitude: inc?.latitude,
-        longitude: inc?.longitude
-      }))
+    ? incidents.map(inc => {
+        const reporter: any = inc?.reporter;
+        let normalizedReporter: any;
+
+        if (!reporter) {
+          normalizedReporter = undefined;
+        } else if (typeof reporter === 'string') {
+          normalizedReporter = { id: reporter, name: reporter };
+        } else if (typeof reporter === 'object') {
+          normalizedReporter = {
+            id: typeof reporter?.id === 'string' ? reporter.id : undefined,
+            name: typeof reporter?.name === 'string'
+              ? reporter.name
+              : safeString(reporter?.id, safeString(reporter?.email, 'Unknown Reporter')),
+            email: typeof reporter?.email === 'string' ? reporter.email : undefined,
+          };
+        } else {
+          normalizedReporter = undefined;
+        }
+
+        return {
+          ...inc,
+          id: inc?.id || `incident-${Math.random()}`,
+          type: safeString(inc?.type, 'Unknown'),
+          description: safeString(inc?.description, 'No description'),
+          zone: safeString(inc?.zone, 'Unknown Zone'),
+          zoneId: safeString(inc?.zoneId),
+          ward: safeString(inc?.ward, 'Unknown Ward'),
+          severity: safeString(inc?.severity, 'medium').toLowerCase(),
+          status: safeString(inc?.status, 'pending').toLowerCase(),
+          time: safeString(inc?.time, 'Just now'),
+          latitude: inc?.latitude,
+          longitude: inc?.longitude,
+          reporter: normalizedReporter,
+        };
+      })
     : [];
 
   // Filter incidents based on zone selection
@@ -216,23 +464,43 @@ export default function SituationRoomDashboard() {
         <div className="flex items-center justify-between bg-white p-4 rounded-lg border shadow-sm">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <div className={`h-3 w-3 rounded-full ${isLive ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
-              <span className="font-medium">{isLive ? 'Live' : 'Paused'}</span>
+              {isSocketConnected ? (
+                <>
+                  <Wifi className="h-4 w-4 text-green-500 animate-pulse" />
+                  <span className="font-medium text-green-600">Live</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="h-4 w-4 text-red-500" />
+                  <span className="font-medium text-red-600">Offline</span>
+                </>
+              )}
             </div>
             <span className="text-sm text-muted-foreground">
               Last updated: {lastUpdated?.toLocaleTimeString() || new Date().toLocaleTimeString()}
             </span>
-            {usingDemoData && (
-              <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
-                Demo Mode
-              </Badge>
+            {notificationCount > 0 && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="bg-red-50 border-red-200 text-red-600 hover:bg-red-100"
+                onClick={() => setShowNotifications(!showNotifications)}
+              >
+                <BellRing className="h-4 w-4 mr-2 animate-pulse" />
+                {notificationCount} new update{notificationCount > 1 ? 's' : ''}
+              </Button>
+            )}
+            {socketId && (
+              <span className="text-xs text-muted-foreground hidden lg:inline">
+                Socket: {socketId.slice(0, 8)}
+              </span>
             )}
           </div>
           <div className="flex items-center gap-2">
             <Button 
               variant={isLive ? 'default' : 'outline'} 
               size="sm"
-              onClick={() => setIsLive(!isLive)}
+              onClick={toggleLive}
             >
               {isLive ? (
                 <>
@@ -257,8 +525,16 @@ export default function SituationRoomDashboard() {
           </div>
         </div>
 
+        {/* WebSocket Status Alert */}
+        {!isSocketConnected && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-yellow-600" />
+            <p className="text-yellow-700">WebSocket disconnected. Reconnecting...</p>
+          </div>
+        )}
+
         {/* Error Message */}
-        {error && !usingDemoData && (
+        {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-2">
             <AlertCircle className="h-5 w-5 text-red-600" />
             <p className="text-red-600">{error}</p>
@@ -267,7 +543,14 @@ export default function SituationRoomDashboard() {
 
         {/* Key Metrics */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Card className="bg-white">
+          <Card className="bg-white relative">
+            {notificationCount > 0 && (
+              <div className="absolute -top-2 -right-2">
+                <Badge className="bg-red-500 text-white animate-pulse">
+                  +{notificationCount}
+                </Badge>
+              </div>
+            )}
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">Total Incidents</CardTitle>
               <AlertTriangle className="h-4 w-4 text-muted-foreground" />
@@ -312,13 +595,16 @@ export default function SituationRoomDashboard() {
           </Card>
         </div>
 
-        {/* Main Content Tabs */}
+        {/* Main Content Tabs - Rest remains the same but with WebSocket updates */}
         <Tabs defaultValue="incidents" value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <div className="flex items-center justify-between">
             <TabsList>
-              <TabsTrigger value="incidents" className="gap-2">
+              <TabsTrigger value="incidents" className="gap-2 relative">
                 <AlertTriangle className="h-4 w-4" />
                 Incidents ({safeNumber(stats?.totalIncidents)})
+                {notificationCount > 0 && (
+                  <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full animate-pulse" />
+                )}
               </TabsTrigger>
               <TabsTrigger value="heatmap" className="gap-2">
                 <Map className="h-4 w-4" />
@@ -479,15 +765,19 @@ export default function SituationRoomDashboard() {
 
           {/* Heatmap Tab */}
           <TabsContent value="heatmap">
-  <IncidentHeatmap 
-    incidents={safeIncidents}
-    height="600px"
-    showControls={true}
-    useTestData={true} // Add this to force test data while debugging
-  />
-</TabsContent>
+            <IncidentHeatmap 
+              incidents={safeIncidents.map((inc) => ({
+                ...inc,
+                pollingUnit: typeof inc.pollingUnit === "string" || typeof inc.pollingUnit === "number"
+                  ? { id: String(inc.pollingUnit), name: String(inc.pollingUnit) }
+                  : inc.pollingUnit || undefined,
+              }))}
+              height="600px"
+              showControls={true}
+            />
+          </TabsContent>
 
-          {/* Analytics Tab */}
+          {/* Analytics Tab - Keep existing */}
           <TabsContent value="analytics">
             <div className="grid gap-4 md:grid-cols-2">
               <Card>
@@ -619,8 +909,10 @@ export default function SituationRoomDashboard() {
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base">Live Activity</CardTitle>
                   <div className="flex items-center gap-1">
-                    <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                    <span className="text-xs text-muted-foreground">Live</span>
+                    <div className={`h-2 w-2 rounded-full ${isSocketConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+                    <span className="text-xs text-muted-foreground">
+                      {isSocketConnected ? 'Live' : 'Offline'}
+                    </span>
                   </div>
                 </div>
               </CardHeader>

@@ -1,25 +1,45 @@
 // lib/api/incidents.ts
+
 import { apiClient } from './client';
 
 export interface Incident {
+  ward: string | undefined;
+  zone: string | undefined;
   id: string;
   type: string;
   description?: string;
   pollingUnitId?: string;
-  pollingUnitName: string;
-  pollingUnit?: string;
-  polling_unit?: string;
+  pollingUnitName?: string;
+  pollingUnit?: {
+    id?: string;
+    name?: string;
+    latitude?: number;
+    longitude?: number;
+    lat?: number;
+    lng?: number;
+    wardId?: string;
+  };
+  polling_unit?: string | {
+    latitude?: number;
+    longitude?: number;
+    lat?: number;
+    lng?: number;
+  };
   wardId?: string;
   wardName?: string;
   zoneId?: string;
   zoneName?: string;
   reporterId?: string;
-  reporterName: string;
-  reporter?: string;
+  reporterName?: string;
+  reporter?: {
+    id?: string;
+    name?: string;
+    email?: string;
+  };
   reported_by?: string;
   severity: string;
   status: string;
-  time: string;
+  time?: string;
   images?: string[];
   mediaUrl?: string;
   createdAt?: string;
@@ -27,6 +47,23 @@ export interface Incident {
   reviewComment?: string;
   latitude?: number;
   longitude?: number;
+  // Nested coordinate structures
+  location?: {
+    latitude?: number;
+    longitude?: number;
+    lat?: number;
+    lng?: number;
+  };
+  coordinates?: {
+    latitude?: number;
+    longitude?: number;
+    lat?: number;
+    lng?: number;
+  };
+  geometry?: {
+    type?: string;
+    coordinates?: [number, number];
+  };
 }
 
 export interface IncidentsResponse {
@@ -34,6 +71,8 @@ export interface IncidentsResponse {
   incidents: Incident[];
   error?: string;
   message?: string;
+  total?: number;
+  withCoordinates?: number;
 }
 
 export interface UpdateIncidentResponse {
@@ -52,13 +91,228 @@ export interface IncidentStats {
   info: number;
 }
 
+export interface MapIncidentsResponse {
+  success: boolean;
+  incidents: Incident[];
+  total: number;
+  withCoordinates: number;
+  message?: string;
+}
+
+/**
+ * Enhanced coordinate extraction with better type safety
+ * This handles your data structure where latitude/longitude are directly on the incident
+ */
+export const extractCoordinates = (incident: any): { lat: number | null; lng: number | null } => {
+  if (!incident) return { lat: null, lng: null };
+
+  // 1. Check for direct latitude/longitude on the incident (YOUR DATA STRUCTURE)
+  if (typeof incident.latitude === 'number' && typeof incident.longitude === 'number') {
+    if (!isNaN(incident.latitude) && !isNaN(incident.longitude)) {
+      return { lat: incident.latitude, lng: incident.longitude };
+    }
+  }
+
+  // 2. Check for pollingUnit object (camelCase)
+  if (incident.pollingUnit && typeof incident.pollingUnit === 'object') {
+    const pu = incident.pollingUnit;
+    
+    if (typeof pu.latitude === 'number' && typeof pu.longitude === 'number') {
+      if (!isNaN(pu.latitude) && !isNaN(pu.longitude)) {
+        return { lat: pu.latitude, lng: pu.longitude };
+      }
+    }
+    if (typeof pu.lat === 'number' && typeof pu.lng === 'number') {
+      if (!isNaN(pu.lat) && !isNaN(pu.lng)) {
+        return { lat: pu.lat, lng: pu.lng };
+      }
+    }
+  }
+
+  // 3. Check for polling_unit (snake_case)
+  if (incident.polling_unit && typeof incident.polling_unit === 'object') {
+    const pu = incident.polling_unit;
+    
+    if (typeof pu.latitude === 'number' && typeof pu.longitude === 'number') {
+      if (!isNaN(pu.latitude) && !isNaN(pu.longitude)) {
+        return { lat: pu.latitude, lng: pu.longitude };
+      }
+    }
+    if (typeof pu.lat === 'number' && typeof pu.lng === 'number') {
+      if (!isNaN(pu.lat) && !isNaN(pu.lng)) {
+        return { lat: pu.lat, lng: pu.lng };
+      }
+    }
+  }
+
+  // 4. Check for location object
+  if (incident.location && typeof incident.location === 'object') {
+    const loc = incident.location;
+    
+    if (typeof loc.latitude === 'number' && typeof loc.longitude === 'number') {
+      if (!isNaN(loc.latitude) && !isNaN(loc.longitude)) {
+        return { lat: loc.latitude, lng: loc.longitude };
+      }
+    }
+    if (typeof loc.lat === 'number' && typeof loc.lng === 'number') {
+      if (!isNaN(loc.lat) && !isNaN(loc.lng)) {
+        return { lat: loc.lat, lng: loc.lng };
+      }
+    }
+  }
+
+  // 5. Check for coordinates object
+  if (incident.coordinates && typeof incident.coordinates === 'object') {
+    const coords = incident.coordinates;
+    
+    if (typeof coords.latitude === 'number' && typeof coords.longitude === 'number') {
+      if (!isNaN(coords.latitude) && !isNaN(coords.longitude)) {
+        return { lat: coords.latitude, lng: coords.longitude };
+      }
+    }
+    if (typeof coords.lat === 'number' && typeof coords.lng === 'number') {
+      if (!isNaN(coords.lat) && !isNaN(coords.lng)) {
+        return { lat: coords.lat, lng: coords.lng };
+      }
+    }
+  }
+
+  // 6. Check for geoJSON format
+  if (incident.geometry && typeof incident.geometry === 'object') {
+    const geom = incident.geometry;
+    if (geom.type === 'Point' && geom.coordinates && Array.isArray(geom.coordinates)) {
+      const [lng, lat] = geom.coordinates;
+      if (typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng)) {
+        return { lat, lng };
+      }
+    }
+  }
+
+  // 7. Try to parse string coordinates
+  if (typeof incident.latitude === 'string' && typeof incident.longitude === 'string') {
+    const lat = parseFloat(incident.latitude);
+    const lng = parseFloat(incident.longitude);
+    if (!isNaN(lat) && !isNaN(lng)) {
+      return { lat, lng };
+    }
+  }
+
+  return { lat: null, lng: null };
+};
+
+/**
+ * Check if an incident has valid coordinates
+ */
+export const hasValidCoordinates = (incident: Incident): boolean => {
+  const { lat, lng } = extractCoordinates(incident);
+  return lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng);
+};
+
+/**
+ * Filter incidents to only those with valid coordinates
+ */
+export const filterIncidentsWithCoordinates = (incidents: Incident[]): Incident[] => {
+  return incidents.filter(hasValidCoordinates);
+};
+
+/**
+ * Enhanced incident response handler
+ * This handles your specific data structure from Supabase
+ */
+const handleIncidentsResponse = (response: any): IncidentsResponse => {
+  console.log('📡 Processing incidents response:', {
+    hasData: !!response,
+    type: typeof response,
+    isArray: Array.isArray(response),
+    keys: response ? Object.keys(response) : 'null'
+  });
+
+  let incidentsData: Incident[] = [];
+  let total = 0;
+  let withCoordinates = 0;
+
+  // Case 1: Response has incidents array with success flag
+  if (response && response.success && response.incidents && Array.isArray(response.incidents)) {
+    incidentsData = response.incidents;
+    total = response.total || response.incidents.length;
+    withCoordinates = response.withCoordinates || 0;
+  }
+  // Case 2: Response is directly an array
+  else if (Array.isArray(response)) {
+    incidentsData = response;
+    total = response.length;
+  }
+  // Case 3: Response has incidents array but no success flag
+  else if (response && response.incidents && Array.isArray(response.incidents)) {
+    incidentsData = response.incidents;
+    total = response.total || response.incidents.length;
+    withCoordinates = response.withCoordinates || 0;
+  }
+  // Case 4: Response has data property with incidents
+  else if (response && response.data && response.data.incidents && Array.isArray(response.data.incidents)) {
+    incidentsData = response.data.incidents;
+    total = response.data.total || response.data.incidents.length;
+    withCoordinates = response.data.withCoordinates || 0;
+  }
+  // Case 5: Response has data as array
+  else if (response && response.data && Array.isArray(response.data)) {
+    incidentsData = response.data;
+    total = response.data.length;
+  }
+  // Case 6: Response has results array
+  else if (response && response.results && Array.isArray(response.results)) {
+    incidentsData = response.results;
+    total = response.results.length;
+  }
+  // Case 7: Response has items array
+  else if (response && response.items && Array.isArray(response.items)) {
+    incidentsData = response.items;
+    total = response.items.length;
+  }
+
+  // Log the structure of the first incident for debugging
+  if (incidentsData.length > 0) {
+    console.log('📊 First incident keys:', Object.keys(incidentsData[0]));
+    console.log('📊 First incident sample:', {
+      id: incidentsData[0].id,
+      type: incidentsData[0].type,
+      latitude: incidentsData[0].latitude,
+      longitude: incidentsData[0].longitude,
+      pollingUnitId: incidentsData[0].pollingUnitId
+    });
+  }
+
+  // Extract coordinates for each incident if needed
+  const processedIncidents = incidentsData.map(inc => {
+    // If latitude/longitude already exist, use them
+    if (typeof inc.latitude === 'number' && typeof inc.longitude === 'number') {
+      return inc;
+    }
+    
+    // Try to extract from pollingUnit
+    const { lat, lng } = extractCoordinates(inc);
+    if (lat !== null && lng !== null) {
+      return { ...inc, latitude: lat, longitude: lng };
+    }
+    return inc;
+  });
+
+  // Count incidents with coordinates
+  const withCoordsCount = processedIncidents.filter(hasValidCoordinates).length;
+  console.log(`📍 Incidents with coordinates: ${withCoordsCount}/${processedIncidents.length}`);
+
+  return {
+    success: true,
+    incidents: processedIncidents,
+    total: total || processedIncidents.length,
+    withCoordinates: withCoordinates || withCoordsCount,
+    message: response?.message
+  };
+};
+
 export const incidentsApi = {
   /**
    * Get incidents based on user role
-   * - System Admin: All incidents
-   * - Situation Room: All incidents (or filtered by zone if assigned)
-   * - Zone Admin: Incidents in their zone
-   * - Ward Admin: Incidents in their ward
    */
   getIncidents: async (role?: string, wardId?: string, zoneId?: string): Promise<IncidentsResponse> => {
     try {
@@ -73,45 +327,27 @@ export const incidentsApi = {
       console.log('📡 Fetching incidents from:', url);
       const response = await apiClient.get<any>(url);
       console.log('📡 Raw response type:', Array.isArray(response) ? 'Array' : typeof response);
-      console.log('📡 Raw response:', response);
       
-      // Handle different response structures
-      let incidentsData: Incident[] = [];
-      
-      // Case 1: Response is directly an array (your backend returns this)
-      if (Array.isArray(response)) {
-        incidentsData = response;
-      }
-      // Case 2: Response has incidents array
-      else if (response && response.incidents && Array.isArray(response.incidents)) {
-        incidentsData = response.incidents;
-      }
-      // Case 3: Response has data property with incidents
-      else if (response && response.data && response.data.incidents && Array.isArray(response.data.incidents)) {
-        incidentsData = response.data.incidents;
-      }
-      // Case 4: Response has data as array
-      else if (response && response.data && Array.isArray(response.data)) {
-        incidentsData = response.data;
-      }
-      // Case 5: Response has results array
-      else if (response && response.results && Array.isArray(response.results)) {
-        incidentsData = response.results;
-      }
-      // Case 6: Response has items array
-      else if (response && response.items && Array.isArray(response.items)) {
-        incidentsData = response.items;
-      }
-      
-      console.log('📊 Extracted incidents count:', incidentsData.length);
-      
-      return {
-        success: true,
-        incidents: incidentsData,
-        message: response?.message
-      };
-    } catch (error) {
+      return handleIncidentsResponse(response);
+    } catch (error: any) {
       console.error('❌ Error fetching incidents:', error);
+      
+      if (error?.response?.status === 401) {
+        return {
+          success: false,
+          incidents: [],
+          error: 'Authentication required. Please log in.',
+          message: 'Unauthorized'
+        };
+      } else if (error?.response?.status === 403) {
+        return {
+          success: false,
+          incidents: [],
+          error: 'Access denied. You do not have permission to view incidents.',
+          message: 'Forbidden'
+        };
+      }
+      
       throw error;
     }
   },
@@ -123,28 +359,159 @@ export const incidentsApi = {
     try {
       const response = await apiClient.get<any>('/admin/incidents');
       console.log('📡 Raw all incidents response:', response);
+      return handleIncidentsResponse(response);
+    } catch (error: any) {
+      console.error('❌ Error fetching all incidents:', error);
       
-      let incidentsData: Incident[] = [];
-      
-      if (Array.isArray(response)) {
-        incidentsData = response;
-      } else if (response && response.incidents && Array.isArray(response.incidents)) {
-        incidentsData = response.incidents;
-      } else if (response && response.data && response.data.incidents && Array.isArray(response.data.incidents)) {
-        incidentsData = response.data.incidents;
-      } else if (response && response.data && Array.isArray(response.data)) {
-        incidentsData = response.data;
-      } else if (response && response.results && Array.isArray(response.results)) {
-        incidentsData = response.results;
+      if (error?.response?.status === 401) {
+        return {
+          success: false,
+          incidents: [],
+          error: 'Authentication required. Please log in.',
+          message: 'Unauthorized'
+        };
+      } else if (error?.response?.status === 403) {
+        return {
+          success: false,
+          incidents: [],
+          error: 'Access denied. You do not have permission to view incidents.',
+          message: 'Forbidden'
+        };
       }
       
-      return {
-        success: true,
-        incidents: incidentsData,
-        message: response?.message
-      };
-    } catch (error) {
-      console.error('❌ Error fetching all incidents:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get incidents with coordinates for the map
+   * Uses the situation room endpoint which returns incidents with coordinates
+   * Route: /api/situation-room/incidents/map
+   */
+  getIncidentsForMap: async (): Promise<IncidentsResponse> => {
+    try {
+      console.log('📍 Calling /situation-room/incidents/map...');
+      const response = await apiClient.get<any>('/situation-room/incidents/map');
+      console.log('📡 Map incidents response received');
+      console.log('📡 Response structure:', {
+        success: response?.success,
+        hasIncidents: !!response?.incidents,
+        incidentCount: response?.incidents?.length || 0,
+        total: response?.total,
+        withCoordinates: response?.withCoordinates
+      });
+      
+      // Log first incident if available
+      if (response?.incidents?.length > 0) {
+        console.log('📊 First incident:', {
+          id: response.incidents[0].id,
+          type: response.incidents[0].type,
+          latitude: response.incidents[0].latitude,
+          longitude: response.incidents[0].longitude
+        });
+      }
+      
+      const result = handleIncidentsResponse(response);
+      
+      // Log coordinate statistics
+      const withCoords = result.incidents.filter(hasValidCoordinates).length;
+      console.log(`📍 ${withCoords}/${result.incidents.length} incidents have valid coordinates`);
+      
+      if (withCoords === 0 && result.incidents.length > 0) {
+        console.warn('⚠️ No incidents have valid coordinates. Check the data structure.');
+      }
+      
+      return result;
+    } catch (error: any) {
+      console.error('❌ Error fetching map incidents:', error);
+      
+      if (error?.response?.status === 401) {
+        return {
+          success: false,
+          incidents: [],
+          error: 'Authentication required. Please log in.',
+          message: 'Unauthorized'
+        };
+      } else if (error?.response?.status === 403) {
+        return {
+          success: false,
+          incidents: [],
+          error: 'Access denied. You do not have permission to view incidents.',
+          message: 'Forbidden'
+        };
+      } else if (error?.response?.status === 404) {
+        return {
+          success: false,
+          incidents: [],
+          error: 'Endpoint not found. Please check your API configuration.',
+          message: 'Not Found'
+        };
+      }
+      
+      throw error;
+    }
+  },
+
+  /**
+   * Get incidents for a specific ward with coordinates
+   * Route: /api/situation-room/wards/:wardId/incidents
+   */
+  getWardIncidents: async (wardId: string): Promise<IncidentsResponse> => {
+    try {
+      const response = await apiClient.get<any>(`/situation-room/wards/${wardId}/incidents`);
+      console.log(`📡 Ward incidents for ${wardId}:`, response);
+      return handleIncidentsResponse(response);
+    } catch (error: any) {
+      console.error('❌ Error fetching ward incidents:', error);
+      
+      if (error?.response?.status === 401) {
+        return {
+          success: false,
+          incidents: [],
+          error: 'Authentication required. Please log in.',
+          message: 'Unauthorized'
+        };
+      } else if (error?.response?.status === 403) {
+        return {
+          success: false,
+          incidents: [],
+          error: 'Access denied. You do not have permission to view incidents.',
+          message: 'Forbidden'
+        };
+      }
+      
+      throw error;
+    }
+  },
+
+  /**
+   * Get incidents for a specific zone with coordinates
+   * Route: /api/situation-room/zones/:zoneId/incidents
+   */
+  getZoneIncidents: async (zoneId: string): Promise<IncidentsResponse> => {
+    try {
+      const response = await apiClient.get<any>(`/situation-room/zones/${zoneId}/incidents`);
+      console.log(`📡 Zone incidents for ${zoneId}:`, response);
+      return handleIncidentsResponse(response);
+    } catch (error: any) {
+      console.error('❌ Error fetching zone incidents:', error);
+      
+      if (error?.response?.status === 401) {
+        return {
+          success: false,
+          incidents: [],
+          error: 'Authentication required. Please log in.',
+          message: 'Unauthorized'
+        };
+      } else if (error?.response?.status === 403) {
+        return {
+          success: false,
+          incidents: [],
+          error: 'Access denied. You do not have permission to view incidents.',
+          message: 'Forbidden'
+        };
+      }
+      
       throw error;
     }
   },
@@ -156,7 +523,6 @@ export const incidentsApi = {
     try {
       const response = await apiClient.get<any>(`/admin/incidents/${incidentId}`);
       
-      // Handle different response structures
       let incident = null;
       if (response && response.incident) {
         incident = response.incident;
@@ -166,6 +532,15 @@ export const incidentsApi = {
         incident = response.data;
       } else {
         incident = response;
+      }
+      
+      // Ensure coordinates are extracted
+      if (incident) {
+        const { lat, lng } = extractCoordinates(incident);
+        if (lat !== null && lng !== null) {
+          incident.latitude = lat;
+          incident.longitude = lng;
+        }
       }
       
       return {
@@ -215,25 +590,12 @@ export const incidentsApi = {
   },
 
   /**
-   * Get incidents by ward (for ward admin)
+   * Get incidents by ward (legacy endpoint)
    */
   getIncidentsByWard: async (wardId: string): Promise<IncidentsResponse> => {
     try {
       const response = await apiClient.get<any>(`/admin/ward/${wardId}/incidents`);
-      
-      let incidentsData: Incident[] = [];
-      if (Array.isArray(response)) {
-        incidentsData = response;
-      } else if (response && response.incidents && Array.isArray(response.incidents)) {
-        incidentsData = response.incidents;
-      } else if (response && response.data && Array.isArray(response.data)) {
-        incidentsData = response.data;
-      }
-      
-      return {
-        success: true,
-        incidents: incidentsData
-      };
+      return handleIncidentsResponse(response);
     } catch (error) {
       console.error('❌ Error fetching ward incidents:', error);
       throw error;
@@ -241,25 +603,12 @@ export const incidentsApi = {
   },
 
   /**
-   * Get incidents by zone (for zone admin)
+   * Get incidents by zone (legacy endpoint)
    */
   getIncidentsByZone: async (zoneId: string): Promise<IncidentsResponse> => {
     try {
       const response = await apiClient.get<any>(`/admin/zone/${zoneId}/incidents`);
-      
-      let incidentsData: Incident[] = [];
-      if (Array.isArray(response)) {
-        incidentsData = response;
-      } else if (response && response.incidents && Array.isArray(response.incidents)) {
-        incidentsData = response.incidents;
-      } else if (response && response.data && Array.isArray(response.data)) {
-        incidentsData = response.data;
-      }
-      
-      return {
-        success: true,
-        incidents: incidentsData
-      };
+      return handleIncidentsResponse(response);
     } catch (error) {
       console.error('❌ Error fetching zone incidents:', error);
       throw error;
@@ -378,20 +727,7 @@ export const incidentsApi = {
   getIncidentsBySeverity: async (severity: string): Promise<IncidentsResponse> => {
     try {
       const response = await apiClient.get<any>(`/admin/incidents?severity=${severity}`);
-      
-      let incidentsData: Incident[] = [];
-      if (Array.isArray(response)) {
-        incidentsData = response;
-      } else if (response && response.incidents && Array.isArray(response.incidents)) {
-        incidentsData = response.incidents;
-      } else if (response && response.data && Array.isArray(response.data)) {
-        incidentsData = response.data;
-      }
-      
-      return {
-        success: true,
-        incidents: incidentsData
-      };
+      return handleIncidentsResponse(response);
     } catch (error) {
       console.error('❌ Error fetching incidents by severity:', error);
       throw error;
@@ -404,20 +740,7 @@ export const incidentsApi = {
   getIncidentsByStatus: async (status: string): Promise<IncidentsResponse> => {
     try {
       const response = await apiClient.get<any>(`/admin/incidents?status=${status}`);
-      
-      let incidentsData: Incident[] = [];
-      if (Array.isArray(response)) {
-        incidentsData = response;
-      } else if (response && response.incidents && Array.isArray(response.incidents)) {
-        incidentsData = response.incidents;
-      } else if (response && response.data && Array.isArray(response.data)) {
-        incidentsData = response.data;
-      }
-      
-      return {
-        success: true,
-        incidents: incidentsData
-      };
+      return handleIncidentsResponse(response);
     } catch (error) {
       console.error('❌ Error fetching incidents by status:', error);
       throw error;
@@ -489,6 +812,9 @@ export const useIncidentsApi = () => {
   return {
     getIncidents: incidentsApi.getIncidents,
     getAllIncidents: incidentsApi.getAllIncidents,
+    getIncidentsForMap: incidentsApi.getIncidentsForMap,
+    getWardIncidents: incidentsApi.getWardIncidents,
+    getZoneIncidents: incidentsApi.getZoneIncidents,
     getIncidentById: incidentsApi.getIncidentById,
     updateIncidentStatus: incidentsApi.updateIncidentStatus,
     getIncidentsByWard: incidentsApi.getIncidentsByWard,
@@ -500,5 +826,8 @@ export const useIncidentsApi = () => {
     getIncidentsBySeverity: incidentsApi.getIncidentsBySeverity,
     getIncidentsByStatus: incidentsApi.getIncidentsByStatus,
     getIncidentsPaginated: incidentsApi.getIncidentsPaginated,
+    extractCoordinates: extractCoordinates,
+    hasValidCoordinates: hasValidCoordinates,
+    filterIncidentsWithCoordinates: filterIncidentsWithCoordinates,
   };
 };

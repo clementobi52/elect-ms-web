@@ -32,6 +32,7 @@ import {
   fetchPollingUnits, 
   fetchUnassignedPollingUnits, 
   fetchWardsInZone,
+  fetchWardsPaginated,
   fetchSystemLogs,
   exportLogs as exportLogsUtil,
   deleteZone,
@@ -67,7 +68,8 @@ export default function SystemAdminDashboard() {
 
   // Pagination states
   const [zonePagination, setZonePagination] = useState<Pagination>({ page: 1, limit: 10, total: 0, totalPages: 0 });
-  const [pollingUnitPagination, setPollingUnitPagination] = useState<Pagination>({ page: 1, limit: 10, total: 0, totalPages: 0 });
+  const [wardPagination, setWardPagination] = useState<Pagination>({ page: 1, limit: 10, total: 0, totalPages: 0 });
+  const [pollingUnitPagination, setPollingUnitPagination] = useState<Pagination>({ page: 1, limit: 50, total: 0, totalPages: 0 });
   const [logPagination, setLogPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
 
   // Filter states
@@ -75,8 +77,8 @@ export default function SystemAdminDashboard() {
   const [wardSearch, setWardSearch] = useState('');
   const [pollingUnitSearch, setPollingUnitSearch] = useState('');
   const [partySearch, setPartySearch] = useState('');
-  const [selectedZone, setSelectedZone] = useState<string>('');
-  const [selectedWard, setSelectedWard] = useState<string>('');
+  const [selectedZone, setSelectedZone] = useState<string>('all');
+  const [selectedWard, setSelectedWard] = useState<string>('all');
   const [showUnassigned, setShowUnassigned] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRole, setSelectedRole] = useState<string>('all');
@@ -98,6 +100,7 @@ export default function SystemAdminDashboard() {
   // Fetch all data on mount
   useEffect(() => {
     loadAllData();
+    loadPollingUnits(1, { limit: 50 });
   }, []);
 
   const loadAllData = async (showToast = false) => {
@@ -110,26 +113,25 @@ export default function SystemAdminDashboard() {
       
       setZones(data.zones || []);
       setWards(data.wards || []);
-      setPollingUnits(data.pollingUnits || []);
+      // Don't set pollingUnits here - let loadPollingUnits handle it
       setUsers(data.users || []);
       
-      // Safely set stats with fallback values
+      const statsData: any = data.stats || {};
       setStats({
-        totalUsers: data.stats?.totalUsers || 0,
-        totalZones: data.stats?.totalZones || 0,
-        totalWards: data.stats?.totalWards || 0,
-        totalPollingUnits: data.stats?.totalPollingUnits || 0,
-        totalAgents: data.stats?.totalAgents || 0,
-        totalWardAdmins: data.stats?.totalWardAdmins || 0,
-        totalZoneAdmins: data.stats?.totalZoneAdmins || 0,
-        situationRoomUsers: data.stats?.situationRoomUsers || 0,
-        systemAdmins: data.stats?.systemAdmins || 0,
-        activeUsers: data.stats?.activeUsers || 0,
-        pendingApprovals: data.stats?.pendingApprovals || 0,
+        totalUsers: statsData.totalUsers || 0,
+        totalZones: statsData.totalZones || 0,
+        totalWards: statsData.totalWards || 0,
+        totalPollingUnits: statsData.totalPollingUnits || 0,
+        totalAgents: statsData.totalAgents || 0,
+        totalWardAdmins: statsData.totalWardAdmins || 0,
+        totalZoneAdmins: statsData.totalZoneAdmins || 0,
+        situationRoomUsers: statsData.situationRoomUsers || 0,
+        systemAdmins: statsData.systemAdmins || 0,
+        activeUsers: statsData.activeUsers || 0,
+        pendingApprovals: statsData.pendingApprovals || 0,
       });
       
       setParties(partiesData || []);
-      setPollingUnitPagination(data.pollingUnitPagination || { page: 1, limit: 10, total: 0, totalPages: 0 });
       
       if (showToast) {
         toast({ title: "Success", description: "Data refreshed successfully" });
@@ -157,16 +159,79 @@ export default function SystemAdminDashboard() {
     }
   };
 
-  const loadPollingUnits = async (page: number, filters?: any) => {
+  const loadWardsPaginated = async (page: number, filters?: any) => {
     try {
-      const data = await fetchPollingUnits(API_BASE_URL, page, filters);
-      setPollingUnits(data.data || []);
-      setPollingUnitPagination(data.pagination || { page, limit: 10, total: 0, totalPages: 0 });
+      const data = await fetchWardsPaginated(API_BASE_URL, page, {
+        ...filters,
+        limit: 10,
+      });
+      setWards(data.data || []);
+      setWardPagination(data.pagination || { page: 1, limit: 10, total: 0, totalPages: 0 });
     } catch (error) {
-      toast({ title: "Error", description: "Failed to load polling units", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to load wards", variant: "destructive" });
     }
   };
 
+  // ✅ FIXED: loadPollingUnits with proper filter handling
+  const loadPollingUnits = async (page: number, filters?: any) => {
+    console.log('📊 loadPollingUnits called with:', { page, filters });
+    
+    try {
+      // Build filters object
+      const queryFilters: any = {
+        limit: filters?.limit || 50,
+      };
+      
+      // Use the selected zone from state if not provided in filters
+      const zoneId = filters?.zoneId || (selectedZone !== 'all' ? selectedZone : undefined);
+      const wardId = filters?.wardId || (selectedWard !== 'all' ? selectedWard : undefined);
+      
+      if (zoneId) {
+        queryFilters.zoneId = zoneId;
+        console.log('📍 Filtering by zone:', zoneId);
+      }
+      
+      if (wardId) {
+        queryFilters.wardId = wardId;
+        console.log('📍 Filtering by ward:', wardId);
+      }
+      
+      if (filters?.search) {
+        queryFilters.search = filters.search;
+      }
+      
+      if (filters?.unassigned) {
+        queryFilters.unassigned = true;
+      }
+      
+      console.log('📤 Sending filters to API:', queryFilters);
+      
+      const data = await fetchPollingUnits(API_BASE_URL, page, queryFilters);
+      
+      console.log('📥 API Response:', {
+        count: data.data?.length || 0,
+        total: data.pagination?.total || 0,
+        filters: data.filters
+      });
+      
+      setPollingUnits(data.data || []);
+      setPollingUnitPagination(data.pagination || { 
+        page: page, 
+        limit: 50, 
+        total: 0, 
+        totalPages: 0 
+      });
+    } catch (error) {
+      console.error('❌ Error loading polling units:', error);
+      toast({ 
+        title: "Error", 
+        description: "Failed to load polling units", 
+        variant: "destructive" 
+      });
+    }
+  };
+
+  // ✅ FIXED: loadUnassignedPollingUnits
   const loadUnassignedPollingUnits = async (page: number) => {
     try {
       const data = await fetchUnassignedPollingUnits(API_BASE_URL, page);
@@ -389,7 +454,7 @@ export default function SystemAdminDashboard() {
         {stats && <UserDistributionCards stats={stats} />}
 
         {/* Main Content Tabs */}
-        <Tabs defaultValue="users" className="space-y-4">
+        <Tabs defaultValue="polling-units" className="space-y-4">
           <div className="flex items-center justify-between">
             <TabsList>
               <TabsTrigger value="users" className="gap-2"><Users className="h-4 w-4" /> Users</TabsTrigger>
@@ -447,9 +512,15 @@ export default function SystemAdminDashboard() {
             <WardsTab
               wards={wards}
               zones={zones}
-              onRefresh={() => loadAllData()}
+              pagination={wardPagination}
+              onPageChange={loadWardsPaginated}
+              onRefresh={() => {
+                loadAllData();
+                loadWardsPaginated(1);
+              }}
               onDelete={handleDelete}
               onFetchWardsInZone={loadWardsInZone}
+              onFetchWards={loadWardsPaginated}
               searchQuery={wardSearch}
               setSearchQuery={setWardSearch}
               selectedZone={selectedZone}
@@ -469,7 +540,7 @@ export default function SystemAdminDashboard() {
                 if (!showUnassigned) {
                   loadUnassignedPollingUnits(1);
                 } else {
-                  loadPollingUnits(1);
+                  loadPollingUnits(1, {});
                 }
               }}
               onPageChange={loadPollingUnits}

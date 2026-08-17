@@ -1,5 +1,29 @@
 // components/admin/system-admin/types/index.ts
-import { Zone, Ward, PollingUnit, User } from '@/lib/types';
+
+import { 
+  Zone, 
+  Ward, 
+  PollingUnit, 
+  User, 
+  State, 
+  LGA,
+  StandardWard,
+  Party,
+  ElectionResult,
+  IncidentReport,
+  VoteCount,
+  Agent,
+  Report,
+  DashboardStats,
+  Role,
+  ROLES,
+  PERMISSIONS,
+  hasPermission,
+  getRoleDisplayName,
+  getRoleBadgeColor,
+  getSeverityColor,
+  getStatusColor
+} from '@/lib/types';
 
 export interface SystemStats {
   totalUsers: number;
@@ -37,14 +61,48 @@ export interface DeleteDialogProps {
   name: string;
 }
 
-export interface Party {
-  id: string;
+export interface CreateUserFormData {
   name: string;
-  logoUrl?: string;
-  slogan?: string;
-  registrationNumber?: string;
-  createdAt?: string;
-  updatedAt?: string;
+  email: string;
+  password: string;
+  role: string;
+  pollingUnitId?: string;
+  wardId?: string;
+  zoneId?: string;
 }
 
-export * from '@/lib/types';
+export interface UpdateUserFormData {
+  name?: string;
+  email?: string;
+  role?: string;
+  status?: string;
+  pollingUnitId?: string;
+  wardId?: string;
+  zoneId?: string;
+}
+
+// Re-export all types from lib
+export {
+  Zone,
+  Ward,
+  PollingUnit,
+  User,
+  State,
+  LGA,
+  StandardWard,
+  Party,
+  ElectionResult,
+  IncidentReport,
+  VoteCount,
+  Agent,
+  Report,
+  DashboardStats,
+  Role,
+  ROLES,
+  PERMISSIONS,
+  hasPermission,
+  getRoleDisplayName,
+  getRoleBadgeColor,
+  getSeverityColor,
+  getStatusColor
+};

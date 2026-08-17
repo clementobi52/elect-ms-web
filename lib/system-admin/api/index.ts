@@ -1,4 +1,7 @@
-// lib/system-admin/system/api/index.ts
+// lib/system-admin/api.ts
+
+import { Ward, Pagination } from '@/components/admin/system-admin/types';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 // Helper to get auth headers
@@ -135,6 +138,115 @@ export const deleteZone = async (API_BASE_URL: string, id: string) => {
 
 // ==================== WARDS ====================
 
+
+
+// ✅ FIXED: Fetch wards with pagination
+export const fetchWardsPaginated = async (
+  API_BASE_URL: string,
+  page: number = 1,
+  filters?: any
+): Promise<{ data: Ward[]; pagination: Pagination }> => {
+  try {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      console.warn('No auth token found');
+      return { data: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } };
+    }
+
+    const params = new URLSearchParams({
+      page: page.toString(),
+      limit: (filters?.limit || 10).toString(),
+    });
+
+    if (filters?.search) params.append('search', filters.search);
+    if (filters?.zoneId) params.append('zoneId', filters.zoneId);
+    if (filters?.stateId) params.append('stateId', filters.stateId);
+    if (filters?.lgaId) params.append('lgaId', filters.lgaId);
+
+    const url = `${API_BASE_URL}/admin/system/wards?${params.toString()}`;
+    console.log('📡 Fetching wards from:', url);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    console.log('📡 Response status:', response.status);
+
+    if (!response.ok) {
+      let errorMessage = `Failed to fetch wards: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        console.error('API Error Response:', errorData);
+        errorMessage = errorData.message || errorData.error || errorMessage;
+      } catch (e) {
+        console.error('Could not parse error response:', e);
+      }
+      throw new Error(errorMessage);
+    }
+
+    const result = await response.json();
+    console.log('📊 Wards API response:', {
+      success: result.success,
+      dataCount: result.data?.length || 0,
+      total: result.pagination?.total || 0,
+      page: result.pagination?.page || 1
+    });
+
+    // Handle different response structures
+    let data = [];
+    let pagination = { page: 1, limit: 10, total: 0, totalPages: 0 };
+
+    if (result.success && result.data) {
+      data = result.data;
+      pagination = result.pagination || { page: 1, limit: 10, total: 0, totalPages: 0 };
+    } else if (result.wards) {
+      data = result.wards;
+      pagination = { page: 1, limit: 10, total: data.length, totalPages: Math.ceil(data.length / 10) };
+    } else if (Array.isArray(result)) {
+      data = result;
+      pagination = { page: 1, limit: 10, total: data.length, totalPages: Math.ceil(data.length / 10) };
+    }
+
+    return {
+      data: data,
+      pagination: pagination
+    };
+  } catch (error) {
+    console.error('Error fetching wards:', error);
+    // Return empty data instead of throwing to prevent UI crashes
+    return { data: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } };
+  }
+};
+
+
+
+
+export const updateWard = async (API_BASE_URL: string, id: string, name: string) => {
+  const token = localStorage.getItem('authToken');
+  const response = await fetch(`${API_BASE_URL}/admin/system/wards/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ name })
+  });
+  return handleResponse(response);
+};
+
+export const deleteWard = async (API_BASE_URL: string, id: string) => {
+  const token = localStorage.getItem('authToken');
+  const response = await fetch(`${API_BASE_URL}/admin/system/wards/${id}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  return handleResponse(response);
+};
+
 export const fetchWardsInZone = async (API_BASE_URL: string, zoneId: string) => {
   const token = localStorage.getItem('authToken');
   const response = await fetch(`${API_BASE_URL}/admin/system/zones/${zoneId}/wards`, {
@@ -160,59 +272,171 @@ export const createWard = async (API_BASE_URL: string, data: { name: string; zon
   return handleResponse(response);
 };
 
-export const updateWard = async (API_BASE_URL: string, id: string, name: string) => {
-  const token = localStorage.getItem('authToken');
-  const response = await fetch(`${API_BASE_URL}/admin/system/wards/${id}`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ name })
-  });
-  return handleResponse(response);
-};
 
-export const deleteWard = async (API_BASE_URL: string, id: string) => {
-  const token = localStorage.getItem('authToken');
-  const response = await fetch(`${API_BASE_URL}/admin/system/wards/${id}`, {
-    method: 'DELETE',
-    headers: { 'Authorization': `Bearer ${token}` }
-  });
-  return handleResponse(response);
-};
+
+
 
 // ==================== POLLING UNITS ====================
+// lib/system-admin/api/index.ts
 
-export const fetchPollingUnits = async (API_BASE_URL: string, page: number, filters?: any) => {
-  const token = localStorage.getItem('authToken');
-  let url = `${API_BASE_URL}/admin/system/polling-units?page=${page}&limit=10`;
-  
-  if (filters?.wardId) url += `&wardId=${filters.wardId}`;
-  if (filters?.zoneId) url += `&zoneId=${filters.zoneId}`;
-  if (filters?.search) url += `&search=${filters.search}`;
-  if (filters?.hasAgent !== undefined) url += `&hasAgent=${filters.hasAgent}`;
-  
-  const response = await fetch(url, {
-    headers: { 'Authorization': `Bearer ${token}` }
-  });
-  
-  if (response.ok) {
-    return await response.json();
+
+/**
+ * Fetch polling units with pagination and filters
+ */
+
+
+export const fetchPollingUnits = async (
+  baseUrl: string,
+  page: number = 1,
+  filters: any = {}
+): Promise<any> => {
+  try {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+
+    const params = new URLSearchParams();
+    
+    params.append('page', page.toString());
+    params.append('limit', (filters.limit || 50).toString());
+    
+    if (filters.zoneId && filters.zoneId !== 'undefined' && filters.zoneId !== 'null' && filters.zoneId !== 'all') {
+      params.append('zoneId', filters.zoneId);
+    }
+    
+    if (filters.wardId && filters.wardId !== 'undefined' && filters.wardId !== 'null' && filters.wardId !== 'all') {
+      params.append('wardId', filters.wardId);
+    }
+    
+    if (filters.search) {
+      params.append('search', filters.search);
+    }
+    
+    if (filters.unassigned) {
+      params.append('unassigned', 'true');
+    }
+
+    const url = `${baseUrl}/admin/polling-units?${params.toString()}`;
+    console.log('📤 API Request URL:', url);
+
+    // ✅ Add timeout to fetch
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      let errorMessage = `Failed to fetch polling units: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorData.error || errorMessage;
+      } catch (e) {
+        // If response is not JSON, use status text
+        errorMessage = response.statusText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    console.log('📥 API Response:', {
+      success: data.success,
+      pollingUnitsCount: data.pollingUnits?.length || 0,
+      total: data.pagination?.total || 0,
+    });
+
+    return {
+      data: data.pollingUnits || [],
+      pagination: data.pagination || { 
+        page: page, 
+        limit: filters.limit || 50, 
+        total: 0, 
+        totalPages: 0 
+      },
+      filters: data.filters || {},
+      success: data.success
+    };
+  } catch (error) {
+    console.error('❌ API Error in fetchPollingUnits:', error);
+    
+    // ✅ Better error message for timeout/connection issues
+    if (error.name === 'AbortError') {
+      throw new Error('Request timed out. Please try again.');
+    }
+    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+      throw new Error('Network error. Please check your connection.');
+    }
+    throw error;
   }
-  return { data: [], pagination: { page, limit: 10, total: 0, totalPages: 0 } };
 };
 
-export const fetchUnassignedPollingUnits = async (API_BASE_URL: string, page: number) => {
-  const token = localStorage.getItem('authToken');
-  const response = await fetch(`${API_BASE_URL}/admin/system/polling-units/unassigned?page=${page}&limit=10`, {
-    headers: { 'Authorization': `Bearer ${token}` }
-  });
-  
-  if (response.ok) {
-    return await response.json();
+/**
+ * Fetch unassigned polling units
+ */
+export const fetchUnassignedPollingUnits = async (
+  baseUrl: string,
+  page: number = 1
+): Promise<any> => {
+  try {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+
+    const params = new URLSearchParams();
+    params.append('page', page.toString());
+    params.append('limit', '50');
+    params.append('unassigned', 'true');
+
+    const url = `${baseUrl}/admin/polling-units?${params.toString()}`;
+    console.log('📤 API Request URL (unassigned):', url);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Failed to fetch unassigned polling units: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('📥 API Response (unassigned):', {
+      success: data.success,
+      pollingUnitsCount: data.pollingUnits?.length || 0,
+      total: data.pagination?.total || 0,
+    });
+
+    return {
+      data: data.pollingUnits || [],
+      pagination: data.pagination || { 
+        page: page, 
+        limit: 50, 
+        total: 0, 
+        totalPages: 0 
+      },
+      filters: data.filters || {},
+      success: data.success
+    };
+  } catch (error) {
+    console.error('❌ API Error in fetchUnassignedPollingUnits:', error);
+    throw error;
   }
-  return { data: [], pagination: { page, limit: 10, total: 0, totalPages: 0 } };
 };
 
 export const createPollingUnit = async (API_BASE_URL: string, data: any) => {
@@ -300,7 +524,7 @@ export const deleteUser = async (API_BASE_URL: string, id: string) => {
   return handleResponse(response);
 };
 
-// party
+// ==================== PARTIES ====================
 
 export interface PartyData {
   name: string;

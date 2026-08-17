@@ -1,5 +1,6 @@
 // components/admin/system-admin/tabs/LogsTab.tsx
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import {
   Card,
   CardContent,
@@ -84,12 +85,33 @@ export const LogsTab: React.FC<LogsTabProps> = ({
   onExportLogs,
 }) => {
   const [selectedLogDetails, setSelectedLogDetails] = useState<any>(null);
+  const [localFilters, setLocalFilters] = useState<LogFilters>(filters);
+
+  // ✅ FETCH LOGS ON INITIAL MOUNT
+  useEffect(() => {
+    onFetchLogs(1);
+  }, []); // Empty dependency array - runs once on mount
 
   const handleFilterChange = (key: keyof LogFilters, value: string) => {
-    onFilterChange({ ...filters, [key]: value });
+    const newFilters = { ...filters, [key]: value };
+    setLocalFilters(newFilters);
+    onFilterChange(newFilters);
   };
 
   const handleApplyFilters = () => {
+    onFetchLogs(1);
+  };
+
+  const handleResetFilters = () => {
+    const resetFilters = {
+      action: '',
+      status: '',
+      startDate: '',
+      endDate: '',
+      search: '',
+    };
+    setLocalFilters(resetFilters);
+    onResetFilters();
     onFetchLogs(1);
   };
 
@@ -103,7 +125,7 @@ export const LogsTab: React.FC<LogsTabProps> = ({
               <CardDescription>View all system activity logs</CardDescription>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={onResetFilters}>
+              <Button variant="outline" size="sm" onClick={handleResetFilters}>
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Reset Filters
               </Button>

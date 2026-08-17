@@ -1,6 +1,8 @@
+// @ts-ignore: allow side-effect CSS import without separate type declarations
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+// @ts-ignore: allow side-effect CSS import without separate type declarations
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
