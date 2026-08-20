@@ -28,7 +28,7 @@ const DEMO_VOTE_SUMMARIES: VoteSummary[] = [
   { party: 'NNPP', votes: 7520, percentage: 7, color: 'bg-purple-500' },
 ];
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
 // Party color mapping (fallback if backend doesn't provide colors)
 const PARTY_COLORS: Record<string, string> = {

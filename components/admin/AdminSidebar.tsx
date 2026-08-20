@@ -3,6 +3,7 @@
 import React, { useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
 import { getRoleDisplayName, getRoleBadgeColor } from '@/lib/types';
@@ -89,6 +90,9 @@ const navItems: NavItem[] = [
         roles: ['Ward Admin', 'Zone Admin', 'Situation Room Admin', 'System Admin'],
       },
     ],
+    getHref: function (role: string): string {
+      throw new Error('Function not implemented.');
+    }
   },
   {
     title: 'Geographic Management',
@@ -108,6 +112,9 @@ const navItems: NavItem[] = [
         roles: ['Situation Room Admin', 'System Admin'],
       },
     ],
+    getHref: function (role: string): string {
+      throw new Error('Function not implemented.');
+    }
   },
   {
     title: 'Monitoring & Analytics',
@@ -133,6 +140,9 @@ const navItems: NavItem[] = [
         roles: ['Zone Admin', 'Situation Room Admin', 'System Admin'],
       },
     ],
+    getHref: function (role: string): string {
+      throw new Error('Function not implemented.');
+    }
   },
   {
     title: 'System Administration',
@@ -158,6 +168,9 @@ const navItems: NavItem[] = [
         roles: ['System Admin'],
       },
     ],
+    getHref: function (role: string): string {
+      throw new Error('Function not implemented.');
+    }
   },
 ];
 
@@ -169,18 +182,18 @@ export default function AdminSidebar() {
 
   // Filter nav items based on user role
   const filteredNavItems = useMemo(() => {
+    const isSystemAdmin = getRoleDisplayName(user.role) === 'System Admin';
+
     return navItems
       .map(item => ({
         ...item,
         children: item.children?.filter(child => 
-          user.role === 'System Admin' ? true : child.roles.includes(user.role)
+          isSystemAdmin ? true : child.roles.includes(getRoleDisplayName(user.role))
         ),
       }))
       .filter(item => {
-        // Filter out empty sections
         if (item.children && item.children.length === 0) return false;
-        // Check if the item itself is allowed
-        return user.role === 'System Admin' ? true : item.roles.includes(user.role);
+        return isSystemAdmin ? true : item.roles.includes(getRoleDisplayName(user.role));
       });
   }, [user.role]);
 
@@ -196,12 +209,19 @@ export default function AdminSidebar() {
   return (
     <div className="flex h-screen w-64 flex-col border-r bg-card">
       {/* Logo and Brand - Fixed at top */}
-      <div className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <Shield className="h-5 w-5" />
+      <div className="flex h-16 shrink-0 items-center gap-3 border-b px-4">
+        <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg">
+          <Image
+            src="/images/logo.png"
+            alt="Logo"
+            width={36}
+            height={36}
+            className="object-contain"
+            priority
+          />
         </div>
         <div className="flex flex-col">
-          <span className="text-sm font-semibold">Election Monitor</span>
+          <span className="text-sm font-semibold tracking-tight">Elect MS</span>
           <span className="text-xs text-muted-foreground">Admin Panel</span>
         </div>
       </div>
@@ -232,7 +252,6 @@ export default function AdminSidebar() {
             </div>
           ) : (
             filteredNavItems.map((item) => {
-              // If item has children, render all children directly (no collapsible)
               if (item.children && item.children.length > 0) {
                 return (
                   <div key={item.title} className="space-y-1">
@@ -268,7 +287,6 @@ export default function AdminSidebar() {
                 );
               }
 
-              // Render regular link item
               const href = item.getHref(user.role);
               const isActive = pathname === href || 
                 (href && pathname.startsWith(href + '/'));

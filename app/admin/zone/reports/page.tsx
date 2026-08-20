@@ -53,29 +53,189 @@ import {
   Plus,
   Trash2,
   MoreVertical,
-  Calendar,
   Clock,
+  Calendar,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import AdminHeader from '@/components/admin/AdminHeader';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { reportsApi, Report, ReportStats, useReportsApi } from '@/lib/api/reports';
 import { apiClient } from '@/lib/api/client';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { ScrollArea } from '@/components/ui/scroll-area';
+
+// Types
+interface Report {
+  id: string;
+  name: string;
+  type: 'summary' | 'results' | 'incidents' | 'agents' | 'wards';
+  format: 'pdf' | 'csv' | 'excel';
+  zoneId: string;
+  wardId?: string;
+  generatedBy: string;
+  generatedByName?: string;
+  filePath?: string;
+  fileSize?: number;
+  size?: string;
+  status: 'processing' | 'ready' | 'failed';
+  errorMessage?: string;
+  data?: any;
+  generatedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  url?: string;
+}
+
+interface ReportStats {
+  totalReports: number;
+  ready: number;
+  processing: number;
+  failed: number;
+  recentReports: Report[];
+}
+
+// Reports API functions
+const reportsApi = {
+  getReports: async (zoneId: string): Promise<{ success: boolean; reports: Report[]; stats: ReportStats }> => {
+    try {
+      const response = await apiClient.get<{
+        success: boolean;
+        reports: Report[];
+        stats: ReportStats;
+      }>(`/admin/zone/${zoneId}/reports`);
+      
+      return {
+        success: response.success || true,
+        reports: response.reports || [],
+        stats: response.stats || {
+          totalReports: 0,
+          ready: 0,
+          processing: 0,
+          failed: 0,
+          recentReports: [],
+        },
+      };
+    } catch (error) {
+      console.error('Error fetching reports:', error);
+      return {
+        success: false,
+        reports: [],
+        stats: {
+          totalReports: 0,
+          ready: 0,
+          processing: 0,
+          failed: 0,
+          recentReports: [],
+        },
+      };
+    }
+  },
+
+  generateReport: async (
+    zoneId: string,
+    options: { type: string; format: string; wardId?: string | null }
+  ): Promise<{ success: boolean; report?: Report; message?: string }> => {
+    try {
+      const response = await apiClient.post<{
+        success: boolean;
+        report: Report;
+        message?: string;
+      }>(`/admin/zone/${zoneId}/reports/generate`, options);
+      
+      return {
+        success: response.success || true,
+        report: response.report,
+        message: response.message || 'Report generated successfully',
+      };
+    } catch (error) {
+      console.error('Error generating report:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to generate report',
+      };
+    }
+  },
+
+  downloadReport: async (reportId: string): Promise<Blob> => {
+    try {
+      const response = await fetch(`http://localhost:5001/api/admin/reports/download/${reportId}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to download: ${response.status}`);
+      }
+      
+      return response.blob();
+    } catch (error) {
+      console.error('Error downloading report:', error);
+      throw error;
+    }
+  },
+
+  downloadReportWithFilename: async (reportId: string, filename: string): Promise<void> => {
+    try {
+      const blob = await reportsApi.downloadReport(reportId);
+      
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error downloading report with filename:', error);
+      throw error;
+    }
+  },
+
+  deleteReport: async (zoneId: string, reportId: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const response = await apiClient.delete<{
+        success: boolean;
+        message?: string;
+      }>(`/admin/zone/${zoneId}/reports/${reportId}`);
+      
+      return {
+        success: response.success || true,
+        message: response.message || 'Report deleted successfully',
+      };
+    } catch (error) {
+      console.error('Error deleting report:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to delete report',
+      };
+    }
+  },
+
+  getReportTypes: () => {
+    return [
+      { value: 'summary', label: 'Summary' },
+      { value: 'results', label: 'Results' },
+      { value: 'incidents', label: 'Incidents' },
+      { value: 'agents', label: 'Agents' },
+      { value: 'wards', label: 'Wards' },
+    ];
+  },
+
+  getReportFormats: () => {
+    return [
+      { value: 'pdf', label: 'PDF' },
+      { value: 'csv', label: 'CSV' },
+      { value: 'excel', label: 'Excel' },
+    ];
+  },
+};
 
 export default function ZoneReportsPage() {
   const router = useRouter();
   const { user } = useAuth();
   const { toast } = useToast();
-  const { 
-    getReports, 
-    generateReport, 
-    deleteReport, 
-    downloadReportWithFilename,
-    getReportTypes,
-    getReportFormats,
-  } = useReportsApi();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -102,8 +262,8 @@ export default function ZoneReportsPage() {
   const [generateWardId, setGenerateWardId] = useState<string>('all');
   const [wards, setWards] = useState<{ id: string; name: string }[]>([]);
 
-  const reportTypes = getReportTypes();
-  const reportFormats = getReportFormats();
+  const reportTypes = reportsApi.getReportTypes();
+  const reportFormats = reportsApi.getReportFormats();
 
   // Fetch reports and stats
   const fetchData = useCallback(async (showLoading = true) => {
@@ -121,31 +281,69 @@ export default function ZoneReportsPage() {
       }
 
       // Fetch reports using the reports API
-      const response = await getReports(zoneId);
+      const response = await reportsApi.getReports(zoneId);
       
       console.log('📡 Reports Response:', response);
 
       if (response.success) {
-        setReports(response.reports || []);
-        setStats(response.stats || {
-          totalReports: 0,
-          ready: 0,
-          processing: 0,
-          failed: 0,
-          recentReports: [],
+        // Map the reports data properly
+        const mappedReports = (response.reports || []).map((report: any) => ({
+          id: report.id || '',
+          name: report.name || 'Untitled Report',
+          type: report.type || 'summary',
+          format: report.format || 'pdf',
+          zoneId: report.zoneId || zoneId,
+          wardId: report.wardId || null,
+          generatedBy: report.generatedBy || report.generator?.name || 'Unknown',
+          generatedByName: report.generatedByName || report.generator?.name || 'Unknown',
+          filePath: report.filePath || null,
+          fileSize: report.fileSize || 0,
+          size: report.size || `${report.fileSize || 0}`,
+          status: report.status || 'processing',
+          errorMessage: report.errorMessage || null,
+          data: report.data || null,
+          generatedAt: report.generatedAt || report.createdAt || new Date().toISOString(),
+          createdAt: report.createdAt || new Date().toISOString(),
+          updatedAt: report.updatedAt || new Date().toISOString(),
+          url: report.url || null,
+        }));
+
+        setReports(mappedReports);
+        
+        // Calculate stats from the reports
+        const totalReports = mappedReports.length;
+        const ready = mappedReports.filter((r: Report) => r.status === 'ready').length;
+        const processing = mappedReports.filter((r: Report) => r.status === 'processing').length;
+        const failed = mappedReports.filter((r: Report) => r.status === 'failed').length;
+        
+        // Get recent reports (last 5)
+        const recentReports = [...mappedReports]
+          .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime())
+          .slice(0, 5);
+
+        setStats({
+          totalReports,
+          ready,
+          processing,
+          failed,
+          recentReports,
         });
       }
 
       // Fetch wards for filter
-      const wardsResponse = await apiClient.get<{ success: boolean; wards: any[] }>(
-        `/admin/zone/${zoneId}/wards`
-      );
-      
-      if (wardsResponse.success && wardsResponse.wards) {
-        setWards(wardsResponse.wards.map((w: any) => ({
-          id: w.id,
-          name: w.name,
-        })));
+      try {
+        const wardsResponse = await apiClient.get<{ success: boolean; wards: any[] }>(
+          `/admin/zone/${zoneId}/wards?page=1&limit=100`
+        );
+        
+        if (wardsResponse.success && wardsResponse.wards) {
+          setWards(wardsResponse.wards.map((w: any) => ({
+            id: w.id,
+            name: w.name,
+          })));
+        }
+      } catch (wardsError) {
+        console.log('Could not fetch wards for filter');
       }
 
       // Set zone name
@@ -165,7 +363,7 @@ export default function ZoneReportsPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user, getReports, toast]);
+  }, [user, toast]);
 
   // Initial load
   useEffect(() => {
@@ -189,11 +387,20 @@ export default function ZoneReportsPage() {
         throw new Error('Zone ID not found');
       }
 
-      const response = await generateReport(zoneId, {
+      console.log('📡 Generating report with options:', {
+        zoneId,
+        type: generateType,
+        format: generateFormat,
+        wardId: generateWardId === 'all' ? null : generateWardId,
+      });
+
+      const response = await reportsApi.generateReport(zoneId, {
         type: generateType as any,
         format: generateFormat as any,
         wardId: generateWardId === 'all' ? null : generateWardId,
       });
+
+      console.log('📡 Generate response:', response);
 
       if (response.success) {
         toast({
@@ -201,6 +408,7 @@ export default function ZoneReportsPage() {
           description: response.message || "Report generated successfully",
         });
         setIsGenerateDialogOpen(false);
+        // Refresh the reports list
         await fetchData(false);
       } else {
         throw new Error(response.message || "Failed to generate report");
@@ -221,7 +429,7 @@ export default function ZoneReportsPage() {
   const handleDownload = async (report: Report) => {
     try {
       if (report.id) {
-        await downloadReportWithFilename(report.id, report.name);
+        await reportsApi.downloadReportWithFilename(report.id, report.name || `report_${report.id}.${report.format}`);
         toast({
           title: "Download Started",
           description: `Downloading ${report.name}`,
@@ -252,7 +460,7 @@ export default function ZoneReportsPage() {
         throw new Error('Zone ID not found');
       }
 
-      const response = await deleteReport(zoneId, reportId);
+      const response = await reportsApi.deleteReport(zoneId, reportId);
 
       if (response.success) {
         toast({
@@ -347,6 +555,16 @@ export default function ZoneReportsPage() {
     }
   };
 
+  // Format file size
+  const formatSize = (size: string | number | undefined) => {
+    if (!size) return 'Unknown';
+    const bytes = typeof size === 'string' ? parseInt(size) : size;
+    if (isNaN(bytes)) return 'Unknown';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
   // Clear filters
   const clearFilters = () => {
     setSearchTerm('');
@@ -363,16 +581,6 @@ export default function ZoneReportsPage() {
     } catch {
       return date;
     }
-  };
-
-  // Format file size
-  const formatSize = (size: string) => {
-    if (!size) return 'Unknown';
-    const bytes = parseInt(size);
-    if (isNaN(bytes)) return 'Unknown';
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
   // Get initials
@@ -406,37 +614,35 @@ export default function ZoneReportsPage() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <AdminHeader 
-            title="Zone Reports" 
-            subtitle={`Generate and manage reports for ${zoneName || 'your zone'}`}
-          />
-          <Button onClick={() => setIsGenerateDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Generate Report
-          </Button>
-        </div>
-      </div>
+      <AdminHeader 
+        title="Zone Reports" 
+        subtitle={`Generate and manage reports for ${zoneName || 'your zone'}`}
+      />
 
       <div className="flex-1 p-4 md:p-6 space-y-6">
-        {/* Header with Refresh */}
+        {/* Header with Generate Button */}
         <div className="flex justify-between items-center">
-          <div className="flex items-center gap-2">
+          <div>
             <h2 className="text-2xl font-bold">Reports</h2>
-            <Badge variant="outline" className="ml-2">
-              {reports.length > 0 ? `${reports.length} Reports` : 'No Reports'}
-            </Badge>
+            <p className="text-sm text-muted-foreground">
+              {reports.length > 0 ? `${reports.length} Reports available` : 'No reports yet'}
+            </p>
           </div>
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={handleRefresh}
-            disabled={refreshing}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-            {refreshing ? 'Refreshing...' : 'Refresh'}
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleRefresh}
+              disabled={refreshing}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+              {refreshing ? 'Refreshing...' : 'Refresh'}
+            </Button>
+            <Button onClick={() => setIsGenerateDialogOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Generate Report
+            </Button>
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -487,7 +693,7 @@ export default function ZoneReportsPage() {
         </div>
 
         {/* Search and Filters */}
-        <div className="flex flex-col gap-4">
+        <div className="space-y-4">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -604,14 +810,6 @@ export default function ZoneReportsPage() {
                   `Showing ${filteredReports.length} of ${reports.length} reports`}
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
-              {reports.length > 0 && (
-                <Badge variant="outline" className="px-3 py-1">
-                  <Clock className="h-3 w-3 mr-1" />
-                  Last generated: {formatDate(reports[0]?.generatedAt || '')}
-                </Badge>
-              )}
-            </div>
           </CardHeader>
           <CardContent>
             {reports.length === 0 ? (
@@ -676,7 +874,7 @@ export default function ZoneReportsPage() {
                             {getStatusBadge(report.status)}
                           </div>
                         </TableCell>
-                        <TableCell className="text-sm">{formatSize(report.size)}</TableCell>
+                        <TableCell className="text-sm">{formatSize(report.fileSize || report.size)}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {formatDate(report.generatedAt)}
                         </TableCell>
@@ -684,10 +882,10 @@ export default function ZoneReportsPage() {
                           <div className="flex items-center gap-2">
                             <Avatar className="h-6 w-6">
                               <AvatarFallback className="text-xs">
-                                {getInitials(report.generatedBy)}
+                                {getInitials(report.generatedBy || report.generatedByName || '')}
                               </AvatarFallback>
                             </Avatar>
-                            <span className="text-sm">{report.generatedBy}</span>
+                            <span className="text-sm">{report.generatedBy || report.generatedByName || 'Unknown'}</span>
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
@@ -713,7 +911,7 @@ export default function ZoneReportsPage() {
                               </DropdownMenuItem>
                               <DropdownMenuItem 
                                 onClick={() => {
-                                  if (confirm('Are you sure you want to delete this report?')) {
+                                  if (window.confirm('Are you sure you want to delete this report?')) {
                                     handleDelete(report.id);
                                   }
                                 }}
@@ -770,7 +968,7 @@ export default function ZoneReportsPage() {
                   </div>
                   <div>
                     <Label className="text-muted-foreground">Size</Label>
-                    <p className="font-medium">{formatSize(selectedReport.size)}</p>
+                    <p className="font-medium">{formatSize(selectedReport.fileSize || selectedReport.size)}</p>
                   </div>
                 </div>
 
@@ -784,10 +982,22 @@ export default function ZoneReportsPage() {
                   <div>
                     <Label className="text-muted-foreground">Generated By</Label>
                     <p className="text-sm text-muted-foreground">
-                      {selectedReport.generatedBy}
+                      {selectedReport.generatedBy || selectedReport.generatedByName || 'Unknown'}
                     </p>
                   </div>
                 </div>
+
+                {/* Show report data preview if available */}
+                {selectedReport.data && (
+                  <div>
+                    <Label className="text-muted-foreground">Report Data</Label>
+                    <ScrollArea className="h-[200px] mt-2 p-3 bg-muted rounded-lg">
+                      <pre className="text-xs whitespace-pre-wrap">
+                        {JSON.stringify(selectedReport.data, null, 2)}
+                      </pre>
+                    </ScrollArea>
+                  </div>
+                )}
 
                 {selectedReport.status === 'ready' && (
                   <Button className="w-full" onClick={() => handleDownload(selectedReport)}>
@@ -801,6 +1011,11 @@ export default function ZoneReportsPage() {
                     <p className="text-sm text-red-700">
                       <AlertTriangle className="h-4 w-4 inline mr-2" />
                       This report failed to generate. Please try again.
+                      {selectedReport.errorMessage && (
+                        <span className="block mt-1 text-xs text-red-500">
+                          Error: {selectedReport.errorMessage}
+                        </span>
+                      )}
                     </p>
                   </div>
                 )}

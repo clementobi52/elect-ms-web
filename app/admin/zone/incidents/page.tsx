@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/use-toast';
 import { IncidentsTable } from '@/components/admin/shared/IncidentsTable';
-import { incidentsApi } from '@/lib/api/incidents';
+import { incidentsApi, type Incident } from '@/lib/api/incidents';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { 
@@ -19,40 +19,13 @@ import {
 import {
   AlertTriangle,
   Building2,
-  MapPin,
-  Globe,
   Users,
   Clock,
   CheckCircle,
-  Shield,
   RefreshCw
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import AdminHeader from '@/components/admin/AdminHeader';
-
-interface Incident {
-  id: string;
-  type: string;
-  description?: string;
-  pollingUnitId?: string;
-  pollingUnitName: string;
-  wardId?: string;
-  wardName?: string;
-  zoneId?: string;
-  zoneName?: string;
-  reporterId?: string;
-  reporterName: string;
-  severity: string;
-  status: string;
-  time: string;
-  images?: string[];
-  mediaUrl?: string;
-  createdAt?: string;
-  updatedAt?: string;
-  reviewComment?: string;
-  latitude?: number;
-  longitude?: number;
-}
 
 interface ZoneStats {
   total: number;
@@ -73,6 +46,7 @@ export default function ZoneIncidentsPage() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<ZoneStats>({
     total: 0,
     pending: 0,
@@ -92,10 +66,26 @@ export default function ZoneIncidentsPage() {
     } else {
       setRefreshing(true);
     }
+    setError(null);
 
     try {
-      // Get incidents
-      const incidentsResponse = await incidentsApi.getIncidents();
+      // ✅ Get zoneId from user
+      const zoneId = user?.zoneId;
+      
+      if (!zoneId) {
+        setError('Zone ID not found');
+        setLoading(false);
+        return;
+      }
+
+      console.log('📡 Fetching incidents for zone:', zoneId);
+
+      // ✅ Pass zoneId to the API
+      const incidentsResponse = await incidentsApi.getIncidents(
+        user?.role,
+        undefined,
+        zoneId
+      );
       
       console.log('📡 Incidents Response:', incidentsResponse);
       
@@ -103,7 +93,7 @@ export default function ZoneIncidentsPage() {
         const incidentList = incidentsResponse.incidents;
         setIncidents(incidentList);
         
-        // Calculate stats from the incidents data
+        // Calculate stats
         const newStats: ZoneStats = {
           total: incidentList.length,
           pending: incidentList.filter(i => i.status?.toLowerCase() === 'pending').length,
@@ -115,9 +105,11 @@ export default function ZoneIncidentsPage() {
           low: incidentList.filter(i => i.severity?.toLowerCase() === 'low').length,
         };
         setStats(newStats);
+      } else if (incidentsResponse.error) {
+        setError(incidentsResponse.error);
       }
 
-      // Set zone name from user
+      // Set zone name
       if (user?.zoneName) {
         setZoneName(user.zoneName);
       } else {
@@ -125,9 +117,10 @@ export default function ZoneIncidentsPage() {
       }
     } catch (error) {
       console.error('Error fetching zone incidents:', error);
+      setError(error instanceof Error ? error.message : 'Failed to load incidents');
       toast({
         title: "Error",
-        description: "Failed to load incidents",
+        description: error instanceof Error ? error.message : "Failed to load incidents",
         variant: "destructive",
       });
     } finally {
@@ -138,8 +131,10 @@ export default function ZoneIncidentsPage() {
 
   // Initial load
   useEffect(() => {
-    fetchData(true);
-  }, [fetchData]);
+    if (user?.zoneId) {
+      fetchData(true);
+    }
+  }, [fetchData, user?.zoneId]);
 
   // Handle refresh
   const handleRefresh = () => {
@@ -199,7 +194,7 @@ export default function ZoneIncidentsPage() {
   };
 
   // Get unique wards count
-  const uniqueWards = new Set(incidents.map(i => i.wardId)).size;
+  const uniqueWards = new Set(incidents.map(i => i.wardName || i.ward)).size;
 
   // Loading skeleton
   if (loading) {
@@ -221,11 +216,53 @@ export default function ZoneIncidentsPage() {
     );
   }
 
+  // Error state
+  if (error) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <AdminHeader 
+          title="Zone Incidents"
+          subtitle="Manage incidents across all wards in your zone"
+        />
+        <div className="flex-1 container p-4 md:p-6">
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
+              <p className="text-lg font-medium text-red-600">{error}</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                Please try refreshing the page
+              </p>
+              <Button 
+                variant="outline" 
+                className="mt-4"
+                onClick={handleRefresh}
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Retry
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col min-h-screen">
       <AdminHeader 
         title="Zone Incidents"
         subtitle={`Manage incidents across all wards in ${zoneName || 'your zone'}`}
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </Button>
+        }
       />
 
       <div className="flex-1 container p-4 md:p-6 space-y-6">

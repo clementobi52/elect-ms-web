@@ -81,7 +81,7 @@ export const reportsApi = {
       console.log('📡 Downloading report:', reportId);
       
       const token = localStorage.getItem('authToken');
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
       
       // Try multiple possible endpoint paths
       const endpoints = [

@@ -12,6 +12,8 @@ import { incidentsApi, Incident, extractCoordinates, hasValidCoordinates, filter
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '';
 
+console.log('Mapbox token exists:', !!MAPBOX_TOKEN);
+
 const MAP_STYLES = {
   street: 'mapbox://styles/mapbox/streets-v12',
   satellite: 'mapbox://styles/mapbox/satellite-streets-v12',

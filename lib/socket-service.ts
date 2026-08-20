@@ -8,7 +8,7 @@ let messageListeners: Array<(event: string, data: any) => void> = [];
 
 export const getSocket = () => {
   if (!socket) {
-    const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5000';
+    const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5001';
     
     console.log('🔌 Creating shared socket connection to:', SOCKET_URL);
     

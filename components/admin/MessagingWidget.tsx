@@ -153,7 +153,7 @@ export function MessagingWidget({
   // Initialize Socket.IO connection
   useEffect(() => {
     const token = localStorage.getItem('authToken');
-    const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5000';
+    const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5001';
     
     if (!token || !user) return;
 

@@ -1,7 +1,7 @@
 // components/admin/AdminHeader.tsx
 "use client";
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { NotificationsPanel } from '@/components/admin/NotificationsPanel';
 import { Button } from '@/components/ui/button';
@@ -23,16 +23,20 @@ interface AdminHeaderProps {
   subtitle?: string;
   onMenuClick?: () => void;
   actions?: React.ReactNode;
+  // ✅ Add option to hide notifications if already rendered in page
+  hideNotifications?: boolean;
 }
 
 export default function AdminHeader({ 
   title, 
   subtitle, 
   onMenuClick,
-  actions 
+  actions,
+  hideNotifications = false, // ✅ Default to false
 }: AdminHeaderProps) {
   const { user, signOut } = useAuth();
   const router = useRouter();
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   const getInitials = (name: string) => {
     if (!name) return 'AD';
@@ -97,14 +101,26 @@ export default function AdminHeader({
               </div>
             )}
 
-            {/* Notifications - Show for all admin roles */}
-            {user?.id && (
+            {/* ✅ Notifications - Only show if not hidden */}
+            {user?.id && !hideNotifications && (
               <NotificationsPanel 
                 userId={user.id}
                 userRole={user.role}
-                wardId={user.role === 'Ward Admin' ? user.wardId : undefined}
+                wardId={String(user.role) === 'Ward Admin' ? user.wardId : undefined}
               />
             )}
+
+            {/* ✅ If notifications are hidden, show a bell icon with count */}
+            {/* {user?.id && hideNotifications && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setNotificationsOpen(!notificationsOpen)}
+                className="relative"
+              >
+                <Bell className="h-5 w-5" />
+              </Button>
+            )} */}
 
             {/* Profile Dropdown */}
             <DropdownMenu>

@@ -30,7 +30,7 @@ interface CreateUserDialogProps {
   onSuccess: () => void;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
 // Helper function to get database role value
 const getDatabaseRole = (roleKey: string): string => {

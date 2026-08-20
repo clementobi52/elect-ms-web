@@ -1,4 +1,4 @@
-// lib/auth-context.tsx - Updated with better debugging
+// lib/auth-context.tsx - Complete updated file
 
 "use client";
 
@@ -29,7 +29,7 @@ interface AuthContextType extends AuthState {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001/api';
 const TOKEN_EXPIRY_BUFFER = 5 * 60 * 1000;
 
 // Helper to decode token payload
@@ -127,7 +127,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('📦 Stored user:', storedUser ? 'Yes' : 'No');
 
         if (storedToken && storedUser) {
-          // Check token status
           const status = getTokenStatus(storedToken);
           console.log('🔑 Token status:', {
             valid: status.valid,
@@ -136,13 +135,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             payload: status.payload
           });
 
-          // If token is expired, clear it and redirect
           if (status.expired) {
             console.log('🔑 Token expired, clearing...');
             localStorage.removeItem('authToken');
             localStorage.removeItem('user');
             
-            // Only redirect if not already on login page
             if (!pathname?.includes('/login')) {
               console.log('🔀 Redirecting to login from auth check...');
               const returnUrl = encodeURIComponent(pathname || '');
@@ -158,7 +155,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return;
           }
 
-          // Token is valid
           const user = JSON.parse(storedUser);
           console.log('✅ Token valid, setting auth state for:', user.role);
           
@@ -169,7 +165,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             isAuthenticated: true,
           });
 
-          // Start token expiry checker
           startTokenCheck(storedToken);
           
           return;
@@ -193,13 +188,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [pathname, router]);
 
-  // Start token expiry checker
   const startTokenCheck = useCallback((token: string) => {
     if (tokenCheckInterval.current) {
       clearInterval(tokenCheckInterval.current);
     }
 
-    // Check token expiry every 30 seconds
     tokenCheckInterval.current = setInterval(() => {
       const currentToken = localStorage.getItem('authToken');
       if (!currentToken) {
@@ -211,13 +204,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const status = getTokenStatus(currentToken);
       
-      // If token is expired, handle it
       if (status.expired) {
         console.log('🔑 Token expired during check!');
         
-        // Try to refresh token if we have a refresh token
-        const refreshToken = localStorage.getItem('refreshToken');
-        if (refreshToken) {
+        const refreshTokenStr = localStorage.getItem('refreshToken');
+        if (refreshTokenStr) {
           console.log('🔄 Attempting to refresh expired token...');
           refreshToken().then(success => {
             if (!success) {
@@ -233,24 +224,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, 30000);
   }, []);
 
-  // Handle sign out with optional redirect
   const handleSignOut = useCallback((redirectToLogin: boolean = true) => {
     console.log('🚪 Signing out...', { redirectToLogin, pathname });
     
-    // Clear storage
     localStorage.removeItem('authToken');
     localStorage.removeItem('user');
     localStorage.removeItem('refreshToken');
     sessionStorage.removeItem('authToken');
     sessionStorage.removeItem('refreshToken');
     
-    // Clear interval
     if (tokenCheckInterval.current) {
       clearInterval(tokenCheckInterval.current);
       tokenCheckInterval.current = null;
     }
     
-    // Reset state
     setAuthState({
       user: null,
       token: null,
@@ -258,7 +245,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: false,
     });
 
-    // Redirect to login if not already on login page
     if (redirectToLogin && !pathname?.includes('/login') && !pathname?.includes('/unauthorized')) {
       isRedirecting.current = true;
       const returnUrl = encodeURIComponent(pathname || '');
@@ -270,7 +256,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [pathname, router]);
 
-  // Refresh token
   const refreshToken = useCallback(async (): Promise<boolean> => {
     try {
       const refreshTokenStr = localStorage.getItem('refreshToken');
@@ -299,19 +284,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (data.token) {
         console.log('✅ Token refreshed successfully');
         
-        // Store new tokens
         localStorage.setItem('authToken', data.token);
         if (data.refreshToken) {
           localStorage.setItem('refreshToken', data.refreshToken);
         }
 
-        // Update auth state
         setAuthState(prev => ({
           ...prev,
           token: data.token,
         }));
 
-        // Restart token check
         startTokenCheck(data.token);
         
         return true;
@@ -324,7 +306,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [startTokenCheck]);
 
-  // Check token expiry manually
   const checkTokenExpiry = useCallback((): boolean => {
     const token = localStorage.getItem('authToken');
     if (!token) {
@@ -347,7 +328,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, [handleSignOut]);
 
-  // Get token status
   const getTokenStatusDetailed = useCallback(() => {
     const token = localStorage.getItem('authToken');
     if (!token) {
@@ -361,7 +341,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Sign in
   const signIn = useCallback(async (email: string, password: string) => {
     console.log('🔐 Signing in...');
     
@@ -384,7 +363,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       console.log(`✅ Sign in successful for ${user.email} (${user.role})`);
 
-      // Store auth data
       localStorage.setItem('authToken', token);
       localStorage.setItem('user', JSON.stringify(user));
       if (newRefreshToken) {
@@ -398,10 +376,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: true,
       });
 
-      // Start token expiry checker
       startTokenCheck(token);
 
-      // Redirect based on role
       const redirectPath = getRedirectPath(user.role);
       console.log(`🔀 Redirecting to ${redirectPath}`);
       router.push(redirectPath);
@@ -411,12 +387,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [router, startTokenCheck]);
 
-  // Sign out
   const signOut = useCallback(() => {
     handleSignOut(true);
   }, [handleSignOut]);
 
-  // Check if user has required role
   const hasRole = useCallback((roles: Role | Role[]): boolean => {
     if (!authState.user) return false;
     
@@ -424,7 +398,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return roleArray.includes(authState.user.role);
   }, [authState.user]);
 
-  // Intercept fetch requests to check token validity
+  // ✅ FIXED: Intercept fetch requests with better handling
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -433,29 +407,98 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.fetch = async function(...args) {
       const [url, options = {}] = args;
       
-      // Skip auth endpoints and public endpoints
-      if (typeof url === 'string' && (url.includes('/auth/') || url.includes('/public/'))) {
+      // Skip auth endpoints, public endpoints, and health checks
+      if (typeof url === 'string' && (url.includes('/auth/') || url.includes('/public/') || url.includes('/health'))) {
         return originalFetch(...args);
       }
 
-      // Check token before making request
-      const token = localStorage.getItem('authToken');
-      if (token) {
+      // Skip if not an API call
+      if (typeof url !== 'string' || !url.includes('/api/')) {
+        return originalFetch(...args);
+      }
+
+      // Skip if on login page
+      if (typeof window !== 'undefined' && window.location?.pathname?.includes('/login')) {
+        return originalFetch(...args);
+      }
+
+      try {
+        const token = localStorage.getItem('authToken');
+        
+        // If no token, proceed without auth header
+        if (!token) {
+          return originalFetch(...args);
+        }
+
+        // Check if token is expired
         const status = getTokenStatus(token);
         if (status.expired) {
           console.log('🔑 Token expired before API call, attempting refresh...');
           
-          // Try to refresh token
-          const refreshed = await refreshToken();
-          if (!refreshed) {
-            console.log('❌ Token refresh failed, redirecting to login...');
-            handleSignOut(true);
-            throw new Error('Session expired. Please login again.');
+          try {
+            const refreshed = await refreshToken();
+            if (refreshed) {
+              const newToken = localStorage.getItem('authToken');
+              if (newToken) {
+                const headers = new Headers(options.headers || {});
+                headers.set('Authorization', `Bearer ${newToken}`);
+                const newOptions = { ...options, headers };
+                return originalFetch(url, newOptions);
+              }
+            }
+          } catch (refreshError) {
+            console.error('Refresh failed:', refreshError);
           }
+          
+          // If refresh failed, redirect to login
+          handleSignOut(true);
+          throw new Error('Session expired. Please login again.');
         }
-      }
 
-      return originalFetch(...args);
+        // Add auth header and make request
+        const headers = new Headers(options.headers || {});
+        if (!headers.has('Authorization')) {
+          headers.set('Authorization', `Bearer ${token}`);
+        }
+        
+        const newOptions = { ...options, headers };
+        const response = await originalFetch(url, newOptions);
+        
+        // Handle 401 Unauthorized - try refresh
+        if (response.status === 401) {
+          console.log('🔄 Received 401, attempting token refresh...');
+          
+          try {
+            const refreshed = await refreshToken();
+            if (refreshed) {
+              const newToken = localStorage.getItem('authToken');
+              if (newToken) {
+                const retryHeaders = new Headers(options.headers || {});
+                retryHeaders.set('Authorization', `Bearer ${newToken}`);
+                const retryOptions = { ...options, headers: retryHeaders };
+                // Retry the request with new token
+                const retryResponse = await originalFetch(url, retryOptions);
+                return retryResponse;
+              }
+            }
+          } catch (refreshError) {
+            console.error('Refresh failed:', refreshError);
+          }
+          
+          // If refresh failed, redirect to login
+          handleSignOut(true);
+          throw new Error('Session expired. Please login again.');
+        }
+        
+        return response;
+      } catch (error) {
+        // Don't throw for network errors - let the caller handle it
+        if (error instanceof TypeError && error.message === 'Failed to fetch') {
+          console.warn('⚠️ Network error, returning original fetch');
+          return originalFetch(...args);
+        }
+        throw error;
+      }
     };
 
     return () => {
@@ -469,12 +512,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (e.key === 'authToken') {
         console.log('📡 Storage event: authToken changed');
         if (!e.newValue) {
-          // Token was removed in another tab
           handleSignOut(false);
         } else {
           const status = getTokenStatus(e.newValue);
           if (status.expired) {
-            // Token expired in another tab
             handleSignOut(true);
           }
         }

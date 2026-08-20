@@ -33,7 +33,10 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
-  Loader2
+  Loader2,
+  Search,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -71,6 +74,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
 import { apiClient } from '@/lib/api/client';
 
 // UUID validation
@@ -131,6 +135,23 @@ interface ZoneStats {
   resultsProgress: number;
 }
 
+interface PaginationData {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+// Helper to deduplicate array by ID
+const deduplicateById = <T extends { id: string }>(items: T[]): T[] => {
+  const seen = new Set<string>();
+  return items.filter(item => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+};
+
 export default function ZonalAdminDashboard() {
   const { user } = useAuth();
   const router = useRouter();
@@ -140,6 +161,18 @@ export default function ZonalAdminDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [usingDemoData, setUsingDemoData] = useState(false);
+
+  // Pagination State
+  const [wardPage, setWardPage] = useState(1);
+  const [wardLimit, setWardLimit] = useState(10);
+  const [wardSearch, setWardSearch] = useState('');
+  const [wardPagination, setWardPagination] = useState<PaginationData>({
+    total: 0,
+    page: 1,
+    limit: 10,
+    totalPages: 0
+  });
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   // Messaging Modal State
   const [showMessagingModal, setShowMessagingModal] = useState(false);
@@ -188,7 +221,49 @@ export default function ZonalAdminDashboard() {
     }
   };
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+
+  // Fetch wards with pagination - NO DUPLICATES
+  const fetchWards = useCallback(async (page: number = 1, search: string = '') => {
+    try {
+      const zoneId = user?.zoneId;
+      if (!zoneId) return;
+
+      setIsLoadingMore(true);
+      
+      const response = await apiClient.get<{ 
+        success: boolean; 
+        wards: Ward[]; 
+        pagination: PaginationData;
+        filters: any;
+      }>(
+        `/admin/zone/${zoneId}/wards?page=${page}&limit=${wardLimit}&search=${encodeURIComponent(search)}`
+      );
+
+      if (response.success && response.wards) {
+        // ✅ Deduplicate the incoming wards
+        const uniqueWards = deduplicateById(response.wards);
+        
+        if (page === 1) {
+          // Replace all wards on first page
+          setWards(uniqueWards);
+        } else {
+          // Append only new wards, avoiding duplicates
+          setWards(prev => {
+            const merged = [...prev, ...uniqueWards];
+            return deduplicateById(merged);
+          });
+        }
+        if (response.pagination) {
+          setWardPagination(response.pagination);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching wards:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [user?.zoneId, wardLimit]);
 
   // Fetch all data
   const fetchData = useCallback(async (showLoading = true) => {
@@ -210,8 +285,6 @@ export default function ZonalAdminDashboard() {
       const statsResponse = await apiClient.get<{ success: boolean; stats: any }>(
         `/admin/zone/${zoneId}/stats`
       );
-      
-      console.log('📡 Stats Response:', statsResponse);
 
       if (statsResponse.success && statsResponse.stats) {
         const s = statsResponse.stats;
@@ -230,34 +303,22 @@ export default function ZonalAdminDashboard() {
         });
       }
 
-      // Fetch wards
-      const wardsResponse = await apiClient.get<{ success: boolean; wards: any[] }>(
-        `/admin/zone/${zoneId}/wards`
-      );
-      
-      console.log('📡 Wards Response:', wardsResponse);
-
-      if (wardsResponse.success && wardsResponse.wards) {
-        setWards(wardsResponse.wards);
-      }
+      // Fetch first page of wards
+      await fetchWards(1, wardSearch);
 
       // Fetch ward admins
       const adminsResponse = await apiClient.get<{ success: boolean; wardAdmins: any[] }>(
         `/admin/zone/${zoneId}/ward-admins`
       );
-      
-      console.log('📡 Ward Admins Response:', adminsResponse);
 
       if (adminsResponse.success && adminsResponse.wardAdmins) {
         setWardAdmins(adminsResponse.wardAdmins);
       }
 
-      // Fetch incidents
+      // Fetch incidents (with pagination)
       const incidentsResponse = await apiClient.get<{ success: boolean; incidents: any[] }>(
-        `/admin/zone/${zoneId}/incidents`
+        `/admin/zone/${zoneId}/incidents?page=1&limit=20`
       );
-      
-      console.log('📡 Incidents Response:', incidentsResponse);
 
       if (incidentsResponse.success && incidentsResponse.incidents) {
         setIncidents(incidentsResponse.incidents);
@@ -267,8 +328,6 @@ export default function ZonalAdminDashboard() {
       const voteResponse = await apiClient.get<{ success: boolean; summary: any[]; totalVotes: number }>(
         `/admin/zone/${zoneId}/vote-summary`
       );
-      
-      console.log('📡 Vote Summary Response:', voteResponse);
 
       if (voteResponse.success) {
         setVotesSummary(voteResponse.summary || []);
@@ -282,13 +341,29 @@ export default function ZonalAdminDashboard() {
     } catch (error) {
       console.error('Error fetching data:', error);
       setError('Failed to load dashboard data');
-      // If API fails, try using demo data
       loadDemoData();
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user]);
+  }, [user, wardSearch, fetchWards]);
+
+  // Handle ward search - RESET on search
+  const handleWardSearch = (search: string) => {
+    setWardSearch(search);
+    setWardPage(1);
+    setWards([]); // Reset wards on search
+    fetchWards(1, search);
+  };
+
+  // Handle load more wards
+  const handleLoadMore = () => {
+    if (wardPage < wardPagination.totalPages) {
+      const nextPage = wardPage + 1;
+      setWardPage(nextPage);
+      fetchWards(nextPage, wardSearch);
+    }
+  };
 
   // Load demo data for fallback
   const loadDemoData = () => {
@@ -338,9 +413,11 @@ export default function ZonalAdminDashboard() {
     }
   }, [fetchData, user?.zoneId]);
 
-  // Handle refresh
+  // Handle refresh - RESET on refresh
   const handleRefresh = async () => {
     setUsingDemoData(false);
+    setWards([]);
+    setWardPage(1);
     await fetchData(false);
   };
 
@@ -357,7 +434,6 @@ export default function ZonalAdminDashboard() {
     router.push(`/admin/ward/${wardId}/incidents`);
   };
 
-  // Updated: Open messaging modal instead of navigating
   const handleContactWardAdmin = (adminId: string | null | undefined, adminName: any) => {
     if (!adminId) {
       toast({
@@ -374,13 +450,10 @@ export default function ZonalAdminDashboard() {
     setShowMessagingModal(true);
   };
 
-  // Handle opening messaging modal from header
   const handleOpenMessaging = () => {
-    // If there's a selected contact from the ward admin, use that
     if (selectedContactId && isValidUUID(selectedContactId)) {
       setShowMessagingModal(true);
     } else {
-      // Otherwise open with no specific contact selected
       setSelectedContactId(null);
       setSelectedContactName('');
       setShowMessagingModal(true);
@@ -439,6 +512,10 @@ export default function ZonalAdminDashboard() {
     }
   };
 
+  // Get unique wards for select dropdown
+  const uniqueWards = deduplicateById(wards);
+
+  // Filter wards by selected ward
   const filteredWards = selectedWard === 'all' 
     ? wards 
     : wards.filter(w => w.id === selectedWard);
@@ -474,14 +551,12 @@ export default function ZonalAdminDashboard() {
         subtitle={`Managing Zone: ${user?.zoneName || user?.zoneId || 'Zone'}`}
         actions={
           <div className="flex items-center gap-2">
-            {/* Notifications Panel */}
             <NotificationsPanel 
               userId={user?.id} 
               userRole={user?.role}
               wardId={user?.wardId}
             />
             
-            {/* Messages Button */}
             <Button 
               variant="outline" 
               size="sm"
@@ -511,7 +586,6 @@ export default function ZonalAdminDashboard() {
       />
       
       <div className="flex-1 p-4 md:p-6 space-y-6">
-        {/* Header with Refresh */}
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-bold">Overview</h2>
@@ -575,10 +649,7 @@ export default function ZonalAdminDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.resultsProgress}%</div>
-              <Progress 
-                value={stats.resultsProgress} 
-                className="h-2 mt-2"
-              />
+              <Progress value={stats.resultsProgress} className="h-2 mt-2" />
               <p className="text-xs text-muted-foreground mt-1">
                 {stats.totalResults} of {stats.totalPollingUnits} submitted
               </p>
@@ -695,10 +766,7 @@ export default function ZonalAdminDashboard() {
                       </Badge>
                     </div>
                     <p className="text-3xl font-bold mb-2">{item.votes.toLocaleString()}</p>
-                    <Progress 
-                      value={item.percentage} 
-                      className={`h-2 ${item.color || 'bg-blue-500'}`} 
-                    />
+                    <Progress value={item.percentage} className={`h-2 ${item.color || 'bg-blue-500'}`} />
                     <p className="text-xs text-muted-foreground mt-2">
                       {totalVotes > 0 ? ((item.votes / totalVotes) * 100).toFixed(1) : 0}% of total
                     </p>
@@ -713,7 +781,6 @@ export default function ZonalAdminDashboard() {
               </div>
             )}
 
-            {/* Summary Footer */}
             {votesSummary.length > 0 && (
               <div className="mt-6 pt-4 border-t flex justify-between items-center text-sm text-muted-foreground">
                 <span>
@@ -729,7 +796,7 @@ export default function ZonalAdminDashboard() {
 
         {/* Main Content Tabs */}
         <Tabs defaultValue="wards" className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <TabsList>
               <TabsTrigger value="wards" className="gap-2">
                 <Building2 className="h-4 w-4" />
@@ -749,144 +816,215 @@ export default function ZonalAdminDashboard() {
               </TabsTrigger>
             </TabsList>
 
-            <Select value={selectedWard} onValueChange={setSelectedWard}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Filter by Ward" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Wards</SelectItem>
-                {wards.map(ward => (
-                  <SelectItem key={ward.id} value={ward.id}>{ward.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-2">
+              <Select value={selectedWard} onValueChange={setSelectedWard}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Filter by Ward" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Wards</SelectItem>
+                  {/* ✅ Use uniqueWards to avoid duplicate keys */}
+                  {uniqueWards.map(ward => (
+                    <SelectItem key={ward.id} value={ward.id}>
+                      {ward.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          {/* Wards Tab */}
+          {/* Wards Tab with Pagination */}
           <TabsContent value="wards">
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <div>
                     <CardTitle>Wards Overview</CardTitle>
-                    <CardDescription>Monitor all wards in your zone</CardDescription>
+                    <CardDescription>
+                      Showing {filteredWards.length} of {wardPagination.total} wards
+                    </CardDescription>
                   </div>
-                  <Button variant="outline" size="sm">
-                    <Download className="h-4 w-4 mr-2" />
-                    Export
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search wards..."
+                        value={wardSearch}
+                        onChange={(e) => handleWardSearch(e.target.value)}
+                        className="pl-8 w-[200px]"
+                      />
+                    </div>
+                    <Button variant="outline" size="sm">
+                      <Download className="h-4 w-4 mr-2" />
+                      Export
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
-                {wards.length === 0 ? (
+                {filteredWards.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     <Building2 className="h-12 w-12 mx-auto mb-3 opacity-20" />
                     <p>No wards found</p>
                   </div>
                 ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Ward</TableHead>
-                        <TableHead>Admin</TableHead>
-                        <TableHead>Polling Units</TableHead>
-                        <TableHead>Agents</TableHead>
-                        <TableHead>Progress</TableHead>
-                        <TableHead>Pending</TableHead>
-                        <TableHead>Incidents</TableHead>
-                        <TableHead></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredWards.map((ward) => (
-                        <TableRow key={ward.id}>
-                          <TableCell>
-                            <div>
-                              <span className="font-medium">{ward.name}</span>
-                              <p className="text-xs text-muted-foreground">{ward.code}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Avatar className="h-6 w-6">
-                                <AvatarFallback className="text-xs">
-                                  {getInitials(ward.adminName || ward.adminId)}
-                                </AvatarFallback>
-                              </Avatar>
-                              <span>{safeString(ward.adminName, 'Unassigned')}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>{ward.pollingUnits}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              <span className="text-green-600">{ward.activeAgents}</span>
-                              <span className="text-muted-foreground">/</span>
-                              <span>{ward.agents}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="w-32">
-                              <div className="flex items-center justify-between text-xs mb-1">
-                                <span>{ward.resultsSubmitted}/{ward.pollingUnits}</span>
-                                <span>{ward.progress}%</span>
-                              </div>
-                              <Progress value={ward.progress} className="h-2" />
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className="bg-yellow-50 text-yellow-700">
-                              {ward.pendingResults}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={ward.incidents > 2 ? 'destructive' : 'secondary'}>
-                              {ward.incidents}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon">
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem 
-                                  onClick={() => handleViewWardDetails(ward.id)}
-                                  className="cursor-pointer"
-                                >
-                                  <Eye className="h-4 w-4 mr-2" />
-                                  View Details
-                                </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  onClick={() => handleViewWardResults(ward.id)}
-                                  className="cursor-pointer"
-                                >
-                                  <FileText className="h-4 w-4 mr-2" />
-                                  View Results
-                                </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  onClick={() => handleViewWardIncidents(ward.id)}
-                                  className="cursor-pointer"
-                                >
-                                  <AlertTriangle className="h-4 w-4 mr-2" />
-                                  View Incidents
-                                </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  onClick={() => handleContactWardAdmin(ward.adminId, ward.adminName)}
-                                  className="cursor-pointer"
-                                  disabled={!ward.adminId}
-                                >
-                                  <Mail className="h-4 w-4 mr-2" />
-                                  {ward.adminId ? 'Contact Admin' : 'No Admin Assigned'}
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
+                  <>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Ward</TableHead>
+                          <TableHead>Admin</TableHead>
+                          <TableHead>Polling Units</TableHead>
+                          <TableHead>Agents</TableHead>
+                          <TableHead>Progress</TableHead>
+                          <TableHead>Pending</TableHead>
+                          <TableHead>Incidents</TableHead>
+                          <TableHead></TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredWards.map((ward) => (
+                          <TableRow key={ward.id}>
+                            <TableCell>
+                              <div>
+                                <span className="font-medium">{ward.name}</span>
+                                <p className="text-xs text-muted-foreground">{ward.code}</p>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Avatar className="h-6 w-6">
+                                  <AvatarFallback className="text-xs">
+                                    {getInitials(ward.adminName || ward.adminId)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span>{safeString(ward.adminName, 'Unassigned')}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>{ward.pollingUnits}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <span className="text-green-600">{ward.activeAgents}</span>
+                                <span className="text-muted-foreground">/</span>
+                                <span>{ward.agents}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="w-32">
+                                <div className="flex items-center justify-between text-xs mb-1">
+                                  <span>{ward.resultsSubmitted}/{ward.pollingUnits}</span>
+                                  <span>{ward.progress}%</span>
+                                </div>
+                                <Progress value={ward.progress} className="h-2" />
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="bg-yellow-50 text-yellow-700">
+                                {ward.pendingResults}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={ward.incidents > 2 ? 'destructive' : 'secondary'}>
+                                {ward.incidents}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon">
+                                    <MoreVertical className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem 
+                                    onClick={() => handleViewWardDetails(ward.id)}
+                                    className="cursor-pointer"
+                                  >
+                                    <Eye className="h-4 w-4 mr-2" />
+                                    View Details
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem 
+                                    onClick={() => handleViewWardResults(ward.id)}
+                                    className="cursor-pointer"
+                                  >
+                                    <FileText className="h-4 w-4 mr-2" />
+                                    View Results
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem 
+                                    onClick={() => handleViewWardIncidents(ward.id)}
+                                    className="cursor-pointer"
+                                  >
+                                    <AlertTriangle className="h-4 w-4 mr-2" />
+                                    View Incidents
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem 
+                                    onClick={() => handleContactWardAdmin(ward.adminId, ward.adminName)}
+                                    className="cursor-pointer"
+                                    disabled={!ward.adminId}
+                                  >
+                                    <Mail className="h-4 w-4 mr-2" />
+                                    {ward.adminId ? 'Contact Admin' : 'No Admin Assigned'}
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+
+                    {/* Load More / Pagination Controls */}
+                    <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                      <div className="text-sm text-muted-foreground">
+                        Showing {filteredWards.length} of {wardPagination.total} wards
+                        {wardPagination.totalPages > 1 && (
+                          <span className="ml-2">
+                            (Page {wardPagination.page} of {wardPagination.totalPages})
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {wardPage > 1 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const prevPage = wardPage - 1;
+                              setWardPage(prevPage);
+                              setWards([]);
+                              fetchWards(prevPage, wardSearch);
+                            }}
+                            disabled={isLoadingMore}
+                          >
+                            <ChevronLeft className="h-4 w-4 mr-1" />
+                            Previous
+                          </Button>
+                        )}
+                        
+                        {wardPage < wardPagination.totalPages && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleLoadMore}
+                            disabled={isLoadingMore}
+                          >
+                            {isLoadingMore ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Loading...
+                              </>
+                            ) : (
+                              <>
+                                Load More
+                                <ChevronRight className="h-4 w-4 ml-1" />
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </>
                 )}
               </CardContent>
             </Card>

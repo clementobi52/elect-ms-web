@@ -329,7 +329,7 @@ export function useSituationRoomData(options?: {
       
       try {
         // ✅ Use the situation room endpoint for vote summary (not admin)
-        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
         const token = localStorage.getItem('authToken');
         
         if (token) {

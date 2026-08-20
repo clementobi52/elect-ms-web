@@ -63,7 +63,7 @@ export function AgentMessaging({ agent, onClose, getInitials }: AgentMessagingPr
   const loadMessageHistory = async () => {
     try {
       const token = localStorage.getItem('authToken');
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
       
       const response = await fetch(`${API_BASE_URL}/admin/messages/history?agentId=${agent.id}`, {
         headers: {

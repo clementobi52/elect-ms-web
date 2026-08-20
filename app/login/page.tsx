@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { Shield, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -54,7 +55,6 @@ function LoginForm() {
       } else {
         // User is not an admin - sign them out
         console.log('Non-admin user detected:', user.role);
-        // You might want to call signOut here if needed
       }
     }
   }, [authLoading, isAuthenticated, user, router]);
@@ -75,30 +75,6 @@ function LoginForm() {
     }
   };
 
-  // Demo login for testing - updated to match backend roles
-  const handleDemoLogin = async (role: AdminRole) => {
-    setError('');
-    setIsLoading(true);
-
-    // Map demo roles to actual credentials
-    const demoCredentials: Record<AdminRole, { email: string; password: string }> = {
-      'Ward Admin': { email: 'wardadmin@example.com', password: 'Admin123!' },
-      'Zone Admin': { email: 'zoneadmin1@example.com', password: 'Admin123!' },
-      'Situation Room Admin': { email: 'situation@example.com', password: 'Admin123!' },
-      'System Admin': { email: 'admin@example.com', password: 'Admin123!' },
-    };
-
-    const creds = demoCredentials[role];
-    if (creds) {
-      try {
-        await signIn(creds.email, creds.password);
-      } catch (err: any) {
-        setError(err.message);
-      }
-    }
-    setIsLoading(false);
-  };
-
   if (authLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -112,14 +88,21 @@ function LoginForm() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-primary-foreground mb-4">
-            <Shield className="h-8 w-8" />
+          <div className="relative h-16 w-16 mb-4">
+            <Image
+              src="/images/logo.png"
+              alt="Election Monitor Logo"
+              width={64}
+              height={64}
+              className="object-contain rounded-xl"
+              priority
+            />
           </div>
-          <h1 className="text-2xl font-bold">Election Monitor</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Election Monitor</h1>
           <p className="text-muted-foreground">Admin Portal</p>
         </div>
 
-        <Card className="shadow-lg">
+        <Card className="shadow-lg border-0">
           <CardHeader className="space-y-1">
             <CardTitle className="text-2xl text-center">Admin Sign In</CardTitle>
             <CardDescription className="text-center">
@@ -146,6 +129,7 @@ function LoginForm() {
                   disabled={isLoading}
                   autoComplete="email"
                   autoFocus
+                  className="h-11"
                 />
               </div>
 
@@ -161,6 +145,7 @@ function LoginForm() {
                     required
                     disabled={isLoading}
                     autoComplete="current-password"
+                    className="h-11"
                   />
                   <Button
                     type="button"
@@ -179,7 +164,7 @@ function LoginForm() {
                 </div>
               </div>
 
-              <Button type="submit" className="w-full" disabled={isLoading}>
+              <Button type="submit" className="w-full h-11" disabled={isLoading}>
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -191,48 +176,16 @@ function LoginForm() {
               </Button>
             </form>
 
-            {/* Demo Login Buttons - Using actual backend roles */}
+            {/* Footer Links */}
             <div className="mt-6 pt-6 border-t">
-              <p className="text-sm text-muted-foreground text-center mb-4">
-                Demo Access (using actual database users)
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleDemoLogin('Ward Admin')}
-                  disabled={isLoading}
-                >
-                  Ward Admin
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleDemoLogin('Zone Admin')}
-                  disabled={isLoading}
-                >
-                  Zone Admin
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleDemoLogin('Situation Room Admin')}
-                  disabled={isLoading}
-                >
-                  Situation Room
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleDemoLogin('System Admin')}
-                  disabled={isLoading}
-                >
-                  System Admin
-                </Button>
+              <div className="flex justify-between text-sm">
+                <a href="#" className="text-muted-foreground hover:text-primary transition">
+                  Forgot password?
+                </a>
+                <a href="#" className="text-muted-foreground hover:text-primary transition">
+                  Need help?
+                </a>
               </div>
-              <p className="text-xs text-muted-foreground text-center mt-2">
-                Password for all demo accounts: <span className="font-mono">Admin123!</span>
-              </p>
             </div>
           </CardContent>
         </Card>

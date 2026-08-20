@@ -131,7 +131,7 @@ export default function WardDetailsPage() {
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [selectedContactName, setSelectedContactName] = useState<string>('');
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
   // Fetch ward details
   const fetchWardDetails = useCallback(async (showLoading = true) => {

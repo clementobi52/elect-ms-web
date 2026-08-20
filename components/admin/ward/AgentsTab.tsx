@@ -31,9 +31,10 @@ import {
   MapPin,
   MessageSquare,
   MoreVertical,
+  X,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { AgentMessaging } from "./AgentMessaging";
+import { MessagingWidget } from "@/components/admin/MessagingWidget";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -80,10 +81,10 @@ export function AgentsTab({ wardId }: AgentsTabProps) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [selectedAgentForMessage, setSelectedAgentForMessage] =
-    useState<Agent | null>(null);
+  const [selectedAgentForMessage, setSelectedAgentForMessage] = useState<Agent | null>(null);
   const [agentToReconcile, setAgentToReconcile] = useState<Agent | null>(null);
   const [showReconcileModal, setShowReconcileModal] = useState(false);
+  const [showMessagingModal, setShowMessagingModal] = useState(false);
 
   // Add ref to track if component is mounted and if refresh is paused
   const isMounted = useRef(true);
@@ -91,16 +92,14 @@ export function AgentsTab({ wardId }: AgentsTabProps) {
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const API_BASE_URL =
-    process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001/api";
   const targetWardId = wardId || user?.wardId;
 
   // Pause refresh when typing in search
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
-    // Pause auto-refresh while typing
     refreshPaused.current = true;
 
-    // Resume auto-refresh after 2 seconds of no typing
     const timeout = setTimeout(() => {
       refreshPaused.current = false;
     }, 2000);
@@ -127,14 +126,11 @@ export function AgentsTab({ wardId }: AgentsTabProps) {
   useEffect(() => {
     if (!targetWardId) return;
 
-    // Clear any existing interval
     if (refreshIntervalRef.current) {
       clearInterval(refreshIntervalRef.current);
     }
 
-    // Set up auto-refresh every 30 seconds
     refreshIntervalRef.current = setInterval(() => {
-      // Only refresh if not paused and component is mounted
       if (!refreshPaused.current && isMounted.current) {
         fetchAgents(false);
       }
@@ -145,7 +141,7 @@ export function AgentsTab({ wardId }: AgentsTabProps) {
         clearInterval(refreshIntervalRef.current);
       }
     };
-  }, [targetWardId]); // Re-run when wardId changes
+  }, [targetWardId]);
 
   const fetchAgents = async (showToast = false) => {
     if (!targetWardId) {
@@ -223,7 +219,6 @@ export function AgentsTab({ wardId }: AgentsTabProps) {
         };
       });
 
-      // Only update state if component is still mounted
       if (isMounted.current) {
         setAgents(processedAgents);
       }
@@ -257,7 +252,6 @@ export function AgentsTab({ wardId }: AgentsTabProps) {
     }
   };
 
-  // Rest of your handlers (handleReconcileLocation, getInitials, etc.) remain the same
   const handleReconcileLocation = async (agent: Agent) => {
     if (!agent.lastKnownLocation) {
       toast({
@@ -318,6 +312,16 @@ export function AgentsTab({ wardId }: AgentsTabProps) {
       .map((n) => n[0])
       .join("")
       .toUpperCase();
+  };
+
+  const handleOpenMessaging = (agent: Agent) => {
+    setSelectedAgentForMessage(agent);
+    setShowMessagingModal(true);
+  };
+
+  const handleCloseMessaging = () => {
+    setShowMessagingModal(false);
+    setSelectedAgentForMessage(null);
   };
 
   const filteredAgents = agents.filter(
@@ -492,7 +496,7 @@ export function AgentsTab({ wardId }: AgentsTabProps) {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
-                            onSelect={() => setSelectedAgentForMessage(agent)}
+                            onSelect={() => handleOpenMessaging(agent)}
                           >
                             <MessageSquare className="mr-2 h-4 w-4" />
                             Send Message
@@ -601,13 +605,60 @@ export function AgentsTab({ wardId }: AgentsTabProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Agent Messaging Modal */}
-      {selectedAgentForMessage && (
-        <AgentMessaging
-          agent={selectedAgentForMessage}
-          onClose={() => setSelectedAgentForMessage(null)}
-          getInitials={getInitials}
-        />
+      {/* ✅ Scrollable Messaging Modal */}
+      {showMessagingModal && selectedAgentForMessage && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto"
+          onClick={(e) => {
+            // Close modal when clicking on the backdrop (outside the modal content)
+            if (e.target === e.currentTarget) {
+              handleCloseMessaging();
+            }
+          }}
+        >
+          <div className="relative bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+            {/* Modal Header with Close Button - Fixed at top */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0 bg-white">
+              <div className="flex items-center gap-3 min-w-0">
+                <Avatar className="h-10 w-10 flex-shrink-0">
+                  <AvatarFallback className="bg-primary/10 text-primary">
+                    {getInitials(selectedAgentForMessage.name)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <h3 className="text-lg font-semibold truncate">
+                    {selectedAgentForMessage.name}
+                  </h3>
+                  <p className="text-sm text-muted-foreground truncate">
+                    {selectedAgentForMessage.pollingUnitName}
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleCloseMessaging}
+                className="h-8 w-8 flex-shrink-0"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+
+            {/* Scrollable Messaging Content */}
+            <div className="flex-1 overflow-y-auto min-h-[400px] max-h-[calc(90vh-80px)]">
+              <MessagingWidget
+                initialContactId={selectedAgentForMessage.id}
+                initialContactName={selectedAgentForMessage.name}
+                onSelectConversation={() => {
+                  console.log('Conversation selected with:', selectedAgentForMessage.name);
+                }}
+                className="h-full border-0 rounded-none"
+                showHeader={false}
+                maxHeight="100%"
+              />
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

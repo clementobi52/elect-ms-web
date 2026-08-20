@@ -239,7 +239,7 @@ export function NotificationsPanel({ wardId, userId, userRole }: NotificationsPa
   const loadNotifications = async () => {
     try {
       const token = localStorage.getItem('authToken');
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
       
       const response = await fetch(`${API_BASE_URL}/admin/notifications`, {
         headers: {
@@ -264,7 +264,7 @@ export function NotificationsPanel({ wardId, userId, userRole }: NotificationsPa
   const markAsRead = async () => {
     try {
       const token = localStorage.getItem('authToken');
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
       
       await fetch(`${API_BASE_URL}/admin/notifications/mark-read`, {
         method: 'POST',

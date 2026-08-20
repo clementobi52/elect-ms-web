@@ -1,7 +1,7 @@
 // app/admin/zone/polling-units/page.tsx
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/use-toast';
@@ -44,8 +44,6 @@ import { Label } from '@/components/ui/label';
 import {
   AlertTriangle,
   Building2,
-  MapPin,
-  Globe,
   Users,
   RefreshCw,
   Search,
@@ -54,42 +52,130 @@ import {
   ChevronDown,
   ChevronUp,
   Eye,
-  Mail,
   CheckCircle,
   Clock,
-  Shield,
   FileText,
-  BarChart3,
   MoreVertical,
   Edit,
-  Trash2,
-  Activity,
-  MapPin as MapPinIcon,
-  Calendar,
   UserCheck,
+  Loader2,
+  ChevronLeft,
+  ChevronRight,
   UserX,
-  Plus,
-  Upload,
+  MapPin,
+  Calendar,
   Download,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import AdminHeader from '@/components/admin/AdminHeader';
-import { pollingUnitsApi, PollingUnit, PollingUnitStats } from '@/lib/api/pollingUnits';
+import { apiClient } from '@/lib/api/client';
+
+// Type Definitions
+interface PollingUnit {
+  id: string;
+  name: string;
+  code: string;
+  wardId?: string;
+  wardName?: string;
+  stateId?: string;
+  stateName?: string;
+  lgaId?: string;
+  lgaName?: string;
+  registeredVoters?: number;
+  latitude?: number;
+  longitude?: number;
+  address?: string;
+  agentId?: string;
+  agentName?: string;
+  agentStatus?: string;
+  resultStatus?: string;
+  hasResults?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  zoneId?: string;
+  zoneName?: string;
+}
+
+interface PollingUnitStats {
+  total: number;
+  withAgents: number;
+  withoutAgents: number;
+  withResults: number;
+  withoutResults: number;
+  verifiedResults: number;
+  pendingResults: number;
+  rejectedResults: number;
+}
+
+interface PaginationData {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+interface FilterState {
+  search: string;
+  status: string;
+  ward: string;
+  hasAgent: string;
+  hasResult: string;
+}
+
+// Helper Functions
+const deduplicateById = <T extends { id: string }>(items: T[]): T[] => {
+  const seen = new Set<string>();
+  return items.filter(item => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+};
+
+const getInitials = (name: string): string => {
+  if (!name) return '??';
+  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+};
+
+// API Base URL
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
 export default function ZonePollingUnitsPage() {
   const router = useRouter();
   const { user } = useAuth();
   const { toast } = useToast();
 
+  // State
   const [pollingUnits, setPollingUnits] = useState<PollingUnit[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [selectedUnit, setSelectedUnit] = useState<PollingUnit | null>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [filterWard, setFilterWard] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [zoneName, setZoneName] = useState<string>('');
+
+  // Filter State
+  const [filters, setFilters] = useState<FilterState>({
+    search: '',
+    status: 'all',
+    ward: 'all',
+    hasAgent: 'all',
+    hasResult: 'all',
+  });
+
+  // Pagination State
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+  const [pagination, setPagination] = useState<PaginationData>({
+    total: 0,
+    page: 1,
+    limit: 20,
+    totalPages: 0
+  });
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  // Stats State
   const [stats, setStats] = useState<PollingUnitStats>({
     total: 0,
     withAgents: 0,
@@ -100,48 +186,142 @@ export default function ZonePollingUnitsPage() {
     pendingResults: 0,
     rejectedResults: 0,
   });
-  const [zoneName, setZoneName] = useState<string>('');
 
-  // Fetch polling units and stats
+  // Fetch polling units with pagination and filters
+  const fetchPollingUnits = useCallback(async (pageNum: number = 1, currentFilters: FilterState = filters) => {
+    try {
+      const zoneId = user?.zoneId;
+      if (!zoneId) {
+        throw new Error('Zone ID not found');
+      }
+
+      setIsLoadingMore(pageNum > 1);
+
+      // Build query params
+      const params = new URLSearchParams();
+      params.append('page', pageNum.toString());
+      params.append('limit', limit.toString());
+      if (currentFilters.search) params.append('search', currentFilters.search);
+      if (currentFilters.status !== 'all') params.append('status', currentFilters.status);
+      if (currentFilters.ward !== 'all') params.append('wardId', currentFilters.ward);
+      if (currentFilters.hasAgent !== 'all') params.append('hasAgent', currentFilters.hasAgent);
+      if (currentFilters.hasResult !== 'all') params.append('hasResult', currentFilters.hasResult);
+
+      const url = `/admin/zone/${zoneId}/polling-units?${params.toString()}`;
+      console.log('📡 Fetching URL:', url);
+
+      const response = await apiClient.get<{
+        success: boolean;
+        pollingUnits: PollingUnit[];
+        pagination: PaginationData;
+        stats?: PollingUnitStats;
+      }>(url);
+
+      console.log('📡 Response:', response);
+
+      if (response.success && response.pollingUnits) {
+        const uniqueUnits = deduplicateById(response.pollingUnits);
+        
+        if (pageNum === 1) {
+          setPollingUnits(uniqueUnits);
+        } else {
+          setPollingUnits(prev => {
+            const merged = [...prev, ...uniqueUnits];
+            return deduplicateById(merged);
+          });
+        }
+        
+        if (response.pagination) {
+          setPagination(response.pagination);
+        }
+
+        // Update stats
+        if (response.stats) {
+          setStats(response.stats);
+        } else {
+          calculateStats(uniqueUnits, response.pagination?.total || uniqueUnits.length);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching polling units:', error);
+      setError('Failed to load polling units');
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [user?.zoneId, limit, filters]);
+
+  // Calculate stats from data
+  const calculateStats = (units: PollingUnit[], totalUnits: number) => {
+    const withAgents = units.filter(u => u.agentId && u.agentId !== null && u.agentId !== '').length;
+    const withoutAgents = units.filter(u => !u.agentId || u.agentId === null || u.agentId === '').length;
+    
+    const withResults = units.filter(u => 
+      u.resultStatus && 
+      u.resultStatus !== 'Not Submitted' && 
+      u.resultStatus !== 'not_submitted'
+    ).length;
+    
+    const withoutResults = units.filter(u => 
+      !u.resultStatus || 
+      u.resultStatus === 'Not Submitted' || 
+      u.resultStatus === 'not_submitted'
+    ).length;
+    
+    const verifiedResults = units.filter(u => 
+      u.resultStatus === 'Verified' || 
+      u.resultStatus === 'verified'
+    ).length;
+    
+    const pendingResults = units.filter(u => 
+      u.resultStatus === 'Pending' || 
+      u.resultStatus === 'pending'
+    ).length;
+    
+    const rejectedResults = units.filter(u => 
+      u.resultStatus === 'Rejected' || 
+      u.resultStatus === 'rejected'
+    ).length;
+
+    setStats({
+      total: totalUnits || units.length,
+      withAgents,
+      withoutAgents,
+      withResults,
+      withoutResults,
+      verifiedResults,
+      pendingResults,
+      rejectedResults,
+    });
+  };
+
+  // Fetch all data
   const fetchData = useCallback(async (showLoading = true) => {
     if (showLoading) {
       setLoading(true);
     } else {
       setRefreshing(true);
     }
+    setError(null);
 
     try {
-      // Get polling units for this zone
-      const response = await pollingUnitsApi.getPollingUnitsByZone(user?.zoneId || '');
-      
-      console.log('📡 Polling Units Response:', response);
-      
-      if (response.success && response.pollingUnits) {
-        setPollingUnits(response.pollingUnits);
-        
-        // Calculate stats from the data
-        const units = response.pollingUnits;
-        const newStats: PollingUnitStats = {
-          total: units.length,
-          withAgents: units.filter(u => u.agentId).length,
-          withoutAgents: units.filter(u => !u.agentId).length,
-          withResults: units.filter(u => u.resultStatus !== 'Not Submitted').length,
-          withoutResults: units.filter(u => u.resultStatus === 'Not Submitted').length,
-          verifiedResults: units.filter(u => u.resultStatus === 'Verified').length,
-          pendingResults: units.filter(u => u.resultStatus === 'Pending').length,
-          rejectedResults: units.filter(u => u.resultStatus === 'Rejected').length,
-        };
-        setStats(newStats);
+      const zoneId = user?.zoneId;
+      if (!zoneId) {
+        throw new Error('Zone ID not found');
       }
 
-      // Set zone name from user
+      // Set zone name
       if (user?.zoneName) {
         setZoneName(user.zoneName);
       } else {
         setZoneName('your zone');
       }
+
+      // Fetch polling units with current filters
+      await fetchPollingUnits(1, filters);
+
     } catch (error) {
-      console.error('Error fetching polling units:', error);
+      console.error('Error fetching data:', error);
+      setError('Failed to load polling units');
       toast({
         title: "Error",
         description: "Failed to load polling units",
@@ -151,34 +331,80 @@ export default function ZonePollingUnitsPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user, toast]);
+  }, [user, filters, fetchPollingUnits, toast]);
 
-  // Initial load
-  useEffect(() => {
-    fetchData(true);
-  }, [fetchData]);
+  // Handle filter change
+  const handleFilterChange = (key: keyof FilterState, value: string) => {
+    const newFilters = { ...filters, [key]: value };
+    setFilters(newFilters);
+    setPage(1);
+    setPollingUnits([]);
+    fetchPollingUnits(1, newFilters);
+  };
+
+  // Handle search
+  const handleSearch = (search: string) => {
+    handleFilterChange('search', search);
+  };
+
+  // Handle load more
+  const handleLoadMore = () => {
+    if (page < pagination.totalPages) {
+      const nextPage = page + 1;
+      setPage(nextPage);
+      fetchPollingUnits(nextPage, filters);
+    }
+  };
 
   // Handle refresh
   const handleRefresh = () => {
+    setPage(1);
+    setPollingUnits([]);
     fetchData(false);
   };
 
+  // Clear all filters
+  const clearFilters = () => {
+    const resetFilters: FilterState = {
+      search: '',
+      status: 'all',
+      ward: 'all',
+      hasAgent: 'all',
+      hasResult: 'all',
+    };
+    setFilters(resetFilters);
+    setPage(1);
+    setPollingUnits([]);
+    fetchPollingUnits(1, resetFilters);
+  };
+
+  // Initial load
+  useEffect(() => {
+    if (user?.zoneId) {
+      fetchData(true);
+    }
+  }, [user?.zoneId]);
+
   // Get unique wards for filter
-  const uniqueWards = Array.from(new Set(pollingUnits.map(u => u.wardName))).filter(Boolean);
+  const uniqueWards = useMemo(() => {
+    return Array.from(new Set(pollingUnits.map(u => u.wardName))).filter(Boolean);
+  }, [pollingUnits]);
 
-  // Filter polling units
-  const filteredUnits = pollingUnits.filter(unit => {
-    const matchesSearch =
-      unit.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      unit.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      unit.wardName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      unit.agentName?.toLowerCase().includes(searchTerm.toLowerCase());
+  // Filter polling units client-side (for additional filtering)
+  const filteredUnits = useMemo(() => {
+    let units = pollingUnits;
 
-    const matchesStatus = filterStatus === 'all' || unit.agentStatus?.toLowerCase() === filterStatus.toLowerCase();
-    const matchesWard = filterWard === 'all' || unit.wardName === filterWard;
+    // Client-side filtering for fields not handled by API
+    if (filters.status === 'online') {
+      units = units.filter(u => u.agentStatus === 'Online');
+    } else if (filters.status === 'offline') {
+      units = units.filter(u => u.agentStatus === 'Offline');
+    } else if (filters.status === 'unassigned') {
+      units = units.filter(u => !u.agentId);
+    }
 
-    return matchesSearch && matchesStatus && matchesWard;
-  });
+    return units;
+  }, [pollingUnits, filters.status]);
 
   // Get status badge
   const getAgentStatusBadge = (status: string) => {
@@ -215,12 +441,12 @@ export default function ZonePollingUnitsPage() {
     }
   };
 
-  // Clear filters
-  const clearFilters = () => {
-    setSearchTerm('');
-    setFilterStatus('all');
-    setFilterWard('all');
-  };
+  // Check if any filters are active
+  const hasActiveFilters = filters.search || 
+    filters.status !== 'all' || 
+    filters.ward !== 'all' || 
+    filters.hasAgent !== 'all' || 
+    filters.hasResult !== 'all';
 
   // Loading skeleton
   if (loading) {
@@ -250,6 +476,25 @@ export default function ZonePollingUnitsPage() {
       />
 
       <div className="flex-1 container p-4 md:p-6 space-y-6">
+        {/* Error Message */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-red-600" />
+            <p className="text-red-600">{error}</p>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="ml-auto"
+              onClick={() => {
+                setError(null);
+                handleRefresh();
+              }}
+            >
+              Retry
+            </Button>
+          </div>
+        )}
+
         {/* Stats Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <Card>
@@ -263,6 +508,11 @@ export default function ZonePollingUnitsPage() {
                   <Building2 className="h-5 w-5 text-gray-600" />
                 </div>
               </div>
+              {pagination.total > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Showing {pollingUnits.length} of {pagination.total} total
+                </p>
+              )}
             </CardContent>
           </Card>
 
@@ -277,6 +527,9 @@ export default function ZonePollingUnitsPage() {
                   <UserCheck className="h-5 w-5 text-green-600" />
                 </div>
               </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {stats.total > 0 ? Math.round((stats.withAgents / stats.total) * 100) : 0}% assigned
+              </p>
             </CardContent>
           </Card>
 
@@ -291,6 +544,9 @@ export default function ZonePollingUnitsPage() {
                   <FileText className="h-5 w-5 text-yellow-600" />
                 </div>
               </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {stats.total > 0 ? Math.round((stats.withResults / stats.total) * 100) : 0}% submitted
+              </p>
             </CardContent>
           </Card>
 
@@ -305,6 +561,9 @@ export default function ZonePollingUnitsPage() {
                   <CheckCircle className="h-5 w-5 text-blue-600" />
                 </div>
               </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {stats.withResults > 0 ? Math.round((stats.verifiedResults / stats.withResults) * 100) : 0}% verified
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -316,12 +575,12 @@ export default function ZonePollingUnitsPage() {
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search by name, code, ward, or agent..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                value={filters.search}
+                onChange={(e) => handleSearch(e.target.value)}
                 className="pl-9"
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Button
                 variant="outline"
                 onClick={() => setShowFilters(!showFilters)}
@@ -330,8 +589,13 @@ export default function ZonePollingUnitsPage() {
                 <Filter className="h-4 w-4" />
                 Filters
                 {showFilters ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                {hasActiveFilters && (
+                  <Badge variant="secondary" className="ml-1 h-5 w-5 p-0 flex items-center justify-center rounded-full">
+                    {Object.values(filters).filter(v => v !== 'all' && v !== '').length}
+                  </Badge>
+                )}
               </Button>
-              {(filterStatus !== 'all' || filterWard !== 'all' || searchTerm) && (
+              {hasActiveFilters && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -342,17 +606,31 @@ export default function ZonePollingUnitsPage() {
                   Clear filters
                 </Button>
               )}
+              <Button
+                variant="outline"
+                onClick={handleRefresh}
+                disabled={refreshing}
+                size="sm"
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+                {refreshing ? 'Refreshing...' : 'Refresh'}
+              </Button>
+              <Button variant="outline" size="sm">
+                <Download className="h-4 w-4 mr-2" />
+                Export
+              </Button>
             </div>
           </div>
 
+          {/* Filter Panel */}
           {showFilters && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted rounded-lg">
               <div>
                 <Label className="text-xs text-muted-foreground">Agent Status</Label>
                 <select
                   className="w-full mt-1 px-3 py-2 bg-background border rounded-md text-sm"
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
+                  value={filters.status}
+                  onChange={(e) => handleFilterChange('status', e.target.value)}
                 >
                   <option value="all">All Statuses</option>
                   <option value="online">Online</option>
@@ -364,13 +642,37 @@ export default function ZonePollingUnitsPage() {
                 <Label className="text-xs text-muted-foreground">Ward</Label>
                 <select
                   className="w-full mt-1 px-3 py-2 bg-background border rounded-md text-sm"
-                  value={filterWard}
-                  onChange={(e) => setFilterWard(e.target.value)}
+                  value={filters.ward}
+                  onChange={(e) => handleFilterChange('ward', e.target.value)}
                 >
                   <option value="all">All Wards</option>
                   {uniqueWards.map((ward) => (
                     <option key={ward} value={ward}>{ward}</option>
                   ))}
+                </select>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Agent Assignment</Label>
+                <select
+                  className="w-full mt-1 px-3 py-2 bg-background border rounded-md text-sm"
+                  value={filters.hasAgent}
+                  onChange={(e) => handleFilterChange('hasAgent', e.target.value)}
+                >
+                  <option value="all">All</option>
+                  <option value="true">Has Agent</option>
+                  <option value="false">No Agent</option>
+                </select>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Result Status</Label>
+                <select
+                  className="w-full mt-1 px-3 py-2 bg-background border rounded-md text-sm"
+                  value={filters.hasResult}
+                  onChange={(e) => handleFilterChange('hasResult', e.target.value)}
+                >
+                  <option value="all">All</option>
+                  <option value="true">Has Result</option>
+                  <option value="false">No Result</option>
                 </select>
               </div>
             </div>
@@ -384,23 +686,30 @@ export default function ZonePollingUnitsPage() {
               <CardTitle>Polling Units</CardTitle>
               <CardDescription>
                 {pollingUnits.length === 0 ? 'No polling units found' :
-                  `Showing ${filteredUnits.length} of ${pollingUnits.length} units`}
+                  `Showing ${filteredUnits.length} of ${pagination.total || pollingUnits.length} units`}
+                {pagination.totalPages > 1 && (
+                  <span className="ml-2 text-xs">
+                    (Page {pagination.page} of {pagination.totalPages})
+                  </span>
+                )}
+                {hasActiveFilters && (
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    • Filters active
+                  </span>
+                )}
               </CardDescription>
             </div>
-            <Button
-              variant="outline"
-              onClick={handleRefresh}
-              disabled={refreshing}
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-              {refreshing ? 'Refreshing...' : 'Refresh'}
-            </Button>
           </CardHeader>
           <CardContent>
             {pollingUnits.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Building2 className="h-12 w-12 mx-auto mb-3 opacity-20" />
                 <p>No polling units found in your zone</p>
+                {hasActiveFilters && (
+                  <Button variant="link" onClick={clearFilters} className="mt-2">
+                    Clear filters to see all units
+                  </Button>
+                )}
               </div>
             ) : filteredUnits.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
@@ -410,98 +719,153 @@ export default function ZonePollingUnitsPage() {
                 </Button>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name / Code</TableHead>
-                      <TableHead>Ward</TableHead>
-                      <TableHead>Agent</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Voters</TableHead>
-                      <TableHead>Result</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredUnits.map((unit) => (
-                      <TableRow key={unit.id}>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">{unit.name}</p>
-                            <p className="text-sm text-muted-foreground">{unit.code}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>{unit.wardName || 'Unknown'}</TableCell>
-                        <TableCell>
-                          {unit.agentName ? (
-                            <div className="flex items-center gap-1 text-sm">
-                              <Users className="h-3 w-3" />
-                              {unit.agentName}
+              <>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name / Code</TableHead>
+                        <TableHead>Ward</TableHead>
+                        <TableHead>Agent</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Voters</TableHead>
+                        <TableHead>Result</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredUnits.map((unit) => (
+                        <TableRow key={unit.id}>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium">{unit.name}</p>
+                              <p className="text-sm text-muted-foreground">{unit.code}</p>
                             </div>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">Unassigned</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center">
-                            {getStatusDot(unit.agentStatus)}
-                            {getAgentStatusBadge(unit.agentStatus)}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">
-                            {unit.registeredVoters || 0}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {getResultStatusBadge(unit.resultStatus)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setSelectedUnit(unit);
-                                  setIsViewDialogOpen(true);
-                                }}
-                              >
-                                <Eye className="h-4 w-4 mr-2" />
-                                View Details
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  router.push(`/admin/polling-units/${unit.id}/edit`);
-                                }}
-                              >
-                                <Edit className="h-4 w-4 mr-2" />
-                                Edit Unit
-                              </DropdownMenuItem>
-                              {!unit.agentId && (
+                          </TableCell>
+                          <TableCell>{unit.wardName || 'Unknown'}</TableCell>
+                          <TableCell>
+                            {unit.agentName ? (
+                              <div className="flex items-center gap-1 text-sm">
+                                <Users className="h-3 w-3" />
+                                {unit.agentName}
+                              </div>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">Unassigned</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center">
+                              {getStatusDot(unit.agentStatus)}
+                              {getAgentStatusBadge(unit.agentStatus)}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {unit.registeredVoters || 0}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {getResultStatusBadge(unit.resultStatus)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   onClick={() => {
-                                    router.push(`/admin/polling-units/${unit.id}/assign-agent`);
+                                    setSelectedUnit(unit);
+                                    setIsViewDialogOpen(true);
                                   }}
                                 >
-                                  <UserCheck className="h-4 w-4 mr-2" />
-                                  Assign Agent
+                                  <Eye className="h-4 w-4 mr-2" />
+                                  View Details
                                 </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    router.push(`/admin/polling-units/${unit.id}/edit`);
+                                  }}
+                                >
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  Edit Unit
+                                </DropdownMenuItem>
+                                {!unit.agentId && (
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      router.push(`/admin/polling-units/${unit.id}/assign-agent`);
+                                    }}
+                                  >
+                                    <UserCheck className="h-4 w-4 mr-2" />
+                                    Assign Agent
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Pagination Controls */}
+                {pagination.totalPages > 1 && (
+                  <div className="flex flex-col sm:flex-row items-center justify-between mt-4 pt-4 border-t gap-4">
+                    <div className="text-sm text-muted-foreground">
+                      Showing {filteredUnits.length} of {pagination.total} units
+                      <span className="ml-2">
+                        (Page {pagination.page} of {pagination.totalPages})
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const prevPage = Math.max(1, page - 1);
+                          setPage(prevPage);
+                          setPollingUnits([]);
+                          fetchPollingUnits(prevPage, filters);
+                        }}
+                        disabled={page <= 1 || isLoadingMore}
+                      >
+                        <ChevronLeft className="h-4 w-4 mr-1" />
+                        Previous
+                      </Button>
+                      
+                      <span className="text-sm text-muted-foreground px-2">
+                        {page} / {pagination.totalPages}
+                      </span>
+                      
+                      {page < pagination.totalPages && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleLoadMore}
+                          disabled={isLoadingMore}
+                        >
+                          {isLoadingMore ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Loading...
+                            </>
+                          ) : (
+                            <>
+                              Load More
+                              <ChevronRight className="h-4 w-4 ml-1" />
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -565,27 +929,27 @@ export default function ZonePollingUnitsPage() {
                   <div>
                     <Label className="text-muted-foreground">Result Status</Label>
                     <div className="mt-1">
-                      {getResultStatusBadge(selectedUnit.resultStatus)}
+                      {getResultStatusBadge(selectedUnit.resultStatus || 'Not Submitted')}
                     </div>
                   </div>
 
                   {/* Location */}
-                  {selectedUnit.location && (
+                  {(selectedUnit.latitude || selectedUnit.longitude) && (
                     <div>
                       <Label className="text-muted-foreground">Location</Label>
                       <div className="mt-1 p-3 bg-blue-50 rounded-lg">
-                        <p className="text-sm">
-                          Latitude: {selectedUnit.location.latitude}
-                        </p>
-                        <p className="text-sm">
-                          Longitude: {selectedUnit.location.longitude}
-                        </p>
+                        {selectedUnit.latitude && (
+                          <p className="text-sm">Latitude: {selectedUnit.latitude}</p>
+                        )}
+                        {selectedUnit.longitude && (
+                          <p className="text-sm">Longitude: {selectedUnit.longitude}</p>
+                        )}
                       </div>
                     </div>
                   )}
 
                   {/* Timestamps */}
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-4 pt-4 border-t">
                     <div>
                       <Label className="text-muted-foreground">Created</Label>
                       <p className="text-sm text-muted-foreground">
@@ -603,7 +967,7 @@ export default function ZonePollingUnitsPage() {
               )}
             </ScrollArea>
 
-            <DialogFooter className="gap-2">
+            <DialogFooter className="gap-2 flex-wrap">
               {selectedUnit && !selectedUnit.agentId && (
                 <Button
                   variant="default"

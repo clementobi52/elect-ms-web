@@ -32,13 +32,13 @@ import {
   Filter,
   X,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Loader2
 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/auth-context';
 import { incidentsApi } from '@/lib/api/incidents';
 
-// Use the same Incident type as IncidentsTab
 export interface Incident {
   id: string;
   type: string;
@@ -142,7 +142,6 @@ export function IncidentsTable({
     return colors[status?.toLowerCase()] || 'bg-gray-500 text-white';
   };
 
-  // Use provided functions or defaults
   const severityColorFn = getSeverityColor || defaultGetSeverityColor;
   const statusColorFn = getStatusColor || defaultGetStatusColor;
 
@@ -271,24 +270,38 @@ export function IncidentsTable({
     setIsUpdating(true);
 
     try {
+      console.log('📡 Updating incident:', selectedIncident.id, 'to', updateStatus);
+      
       if (onUpdate) {
         await onUpdate(selectedIncident.id, updateStatus, updateComment);
       } else {
+        // ✅ Use the API directly
         const response = await incidentsApi.updateIncidentStatus(
           selectedIncident.id,
           updateStatus,
           updateComment
         );
         
+        console.log('📡 Update response:', response);
+        
         if (!response.success) {
           throw new Error(response.message || 'Failed to update incident');
         }
         
         if (response.incident) {
+          // Update the incident in the local state
           setIncidents(prev => 
             prev.map(i => 
               i.id === selectedIncident.id 
-                ? { ...response.incident, time: formatTime(response.incident.time || new Date().toISOString()) }
+                ? { 
+                    ...i, 
+                    ...response.incident,
+                    status: updateStatus,
+                    reviewComment: updateComment || i.reviewComment,
+                    time: formatTime(response.incident.time || new Date().toISOString()),
+                    pollingUnitName: response.incident.pollingUnitName || getPollingUnitName(selectedIncident),
+                    reporterName: response.incident.reporterName || getReporterName(selectedIncident)
+                  }
                 : i
             )
           );
@@ -304,7 +317,11 @@ export function IncidentsTable({
       setUpdateComment('');
       setSelectedIncident(null);
       
-      await handleRefresh();
+      // Refresh the list after a short delay
+      setTimeout(() => {
+        handleRefresh();
+      }, 500);
+      
     } catch (error) {
       console.error('Error updating incident:', error);
       toast({
@@ -739,6 +756,11 @@ export function IncidentsTable({
                 onChange={(e) => setUpdateComment(e.target.value)}
                 rows={4}
               />
+              <p className="text-sm text-muted-foreground">
+                {updateComment.length < 10 && (
+                  <span className="text-yellow-600">Please add at least 10 characters</span>
+                )}
+              </p>
             </div>
           </div>
 
@@ -748,11 +770,14 @@ export function IncidentsTable({
             </Button>
             <Button 
               onClick={handleUpdateIncident}
-              disabled={isUpdating || !updateComment.trim()}
+              disabled={isUpdating || !updateComment.trim() || updateComment.trim().length < 10}
               className={updateStatus === 'Resolved' ? 'bg-green-600 hover:bg-green-700' : ''}
             >
               {isUpdating ? (
-                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Updating...
+                </>
               ) : updateStatus === 'Investigating' ? (
                 <>
                   <AlertTriangle className="h-4 w-4 mr-2" />

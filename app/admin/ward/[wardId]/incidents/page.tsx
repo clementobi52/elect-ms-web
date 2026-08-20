@@ -97,7 +97,7 @@ export default function WardIncidentsPage() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [wardName, setWardName] = useState<string>('');
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
   // Fetch incidents
   const fetchIncidents = useCallback(async (showLoading = true) => {

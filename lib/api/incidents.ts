@@ -47,7 +47,6 @@ export interface Incident {
   reviewComment?: string;
   latitude?: number;
   longitude?: number;
-  // Nested coordinate structures
   location?: {
     latitude?: number;
     longitude?: number;
@@ -99,14 +98,15 @@ export interface MapIncidentsResponse {
   message?: string;
 }
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+
 /**
  * Enhanced coordinate extraction with better type safety
- * This handles your data structure where latitude/longitude are directly on the incident
  */
 export const extractCoordinates = (incident: any): { lat: number | null; lng: number | null } => {
   if (!incident) return { lat: null, lng: null };
 
-  // 1. Check for direct latitude/longitude on the incident (YOUR DATA STRUCTURE)
+  // 1. Check for direct latitude/longitude on the incident
   if (typeof incident.latitude === 'number' && typeof incident.longitude === 'number') {
     if (!isNaN(incident.latitude) && !isNaN(incident.longitude)) {
       return { lat: incident.latitude, lng: incident.longitude };
@@ -217,7 +217,6 @@ export const filterIncidentsWithCoordinates = (incidents: Incident[]): Incident[
 
 /**
  * Enhanced incident response handler
- * This handles your specific data structure from Supabase
  */
 const handleIncidentsResponse = (response: any): IncidentsResponse => {
   console.log('📡 Processing incidents response:', {
@@ -284,12 +283,10 @@ const handleIncidentsResponse = (response: any): IncidentsResponse => {
 
   // Extract coordinates for each incident if needed
   const processedIncidents = incidentsData.map(inc => {
-    // If latitude/longitude already exist, use them
     if (typeof inc.latitude === 'number' && typeof inc.longitude === 'number') {
       return inc;
     }
     
-    // Try to extract from pollingUnit
     const { lat, lng } = extractCoordinates(inc);
     if (lat !== null && lng !== null) {
       return { ...inc, latitude: lat, longitude: lng };
@@ -318,10 +315,14 @@ export const incidentsApi = {
     try {
       let url = '/admin/incidents';
       
-      if (wardId) {
-        url = `/admin/ward/${wardId}/incidents`;
-      } else if (zoneId) {
+      if (zoneId) {
         url = `/admin/zone/${zoneId}/incidents`;
+        console.log('📡 Fetching incidents for zone:', zoneId);
+      } else if (wardId) {
+        url = `/admin/ward/${wardId}/incidents`;
+        console.log('📡 Fetching incidents for ward:', wardId);
+      } else {
+        console.log('📡 Fetching all incidents');
       }
       
       console.log('📡 Fetching incidents from:', url);
@@ -345,6 +346,14 @@ export const incidentsApi = {
           incidents: [],
           error: 'Access denied. You do not have permission to view incidents.',
           message: 'Forbidden'
+        };
+      } else if (error?.response?.status === 404) {
+        return {
+          success: true,
+          incidents: [],
+          total: 0,
+          withCoordinates: 0,
+          message: 'No incidents found'
         };
       }
       
@@ -385,8 +394,6 @@ export const incidentsApi = {
 
   /**
    * Get incidents with coordinates for the map
-   * Uses the situation room endpoint which returns incidents with coordinates
-   * Route: /api/situation-room/incidents/map
    */
   getIncidentsForMap: async (): Promise<IncidentsResponse> => {
     try {
@@ -401,7 +408,6 @@ export const incidentsApi = {
         withCoordinates: response?.withCoordinates
       });
       
-      // Log first incident if available
       if (response?.incidents?.length > 0) {
         console.log('📊 First incident:', {
           id: response.incidents[0].id,
@@ -413,7 +419,6 @@ export const incidentsApi = {
       
       const result = handleIncidentsResponse(response);
       
-      // Log coordinate statistics
       const withCoords = result.incidents.filter(hasValidCoordinates).length;
       console.log(`📍 ${withCoords}/${result.incidents.length} incidents have valid coordinates`);
       
@@ -454,7 +459,6 @@ export const incidentsApi = {
 
   /**
    * Get incidents for a specific ward with coordinates
-   * Route: /api/situation-room/wards/:wardId/incidents
    */
   getWardIncidents: async (wardId: string): Promise<IncidentsResponse> => {
     try {
@@ -486,7 +490,6 @@ export const incidentsApi = {
 
   /**
    * Get incidents for a specific zone with coordinates
-   * Route: /api/situation-room/zones/:zoneId/incidents
    */
   getZoneIncidents: async (zoneId: string): Promise<IncidentsResponse> => {
     try {
@@ -534,7 +537,6 @@ export const incidentsApi = {
         incident = response;
       }
       
-      // Ensure coordinates are extracted
       if (incident) {
         const { lat, lng } = extractCoordinates(incident);
         if (lat !== null && lng !== null) {
@@ -553,41 +555,90 @@ export const incidentsApi = {
     }
   },
 
-  /**
-   * Update incident status
-   */
-  updateIncidentStatus: async (
-    incidentId: string, 
-    status: 'Investigating' | 'Resolved', 
-    comment: string
-  ): Promise<UpdateIncidentResponse> => {
-    try {
-      const response = await apiClient.patch<any>(`/admin/incidents/${incidentId}/status`, {
-        status,
-        reviewComment: comment
-      });
-      
-      console.log('📡 Update response:', response);
-      
-      let incident = null;
-      if (response && response.incident) {
-        incident = response.incident;
-      } else if (response && response.data && response.data.incident) {
-        incident = response.data.incident;
-      } else if (response && response.data) {
-        incident = response.data;
+
+// lib/api/incidents.ts
+
+/**
+ * ✅ Update incident status - Completely bypasses auth interceptor
+ * Uses a separate fetch instance that doesn't go through the interceptor
+ */
+updateIncidentStatus: async (
+  incidentId: string, 
+  status: 'Investigating' | 'Resolved', 
+  comment: string
+): Promise<UpdateIncidentResponse> => {
+  try {
+    const token = localStorage.getItem('authToken');
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+    const url = `${API_BASE_URL}/admin/incidents/${incidentId}/status`;
+    
+    console.log('📡 [FRONTEND] Direct fetch - Updating incident:', {
+      incidentId,
+      status,
+      comment,
+      url,
+      hasToken: !!token
+    });
+
+    // ✅ Create a completely independent fetch function
+    // This creates a new fetch request that doesn't go through the interceptor
+    const directFetch = async (input: RequestInfo, init?: RequestInit) => {
+      // Use the global fetch directly (bypassing window.fetch override)
+      const fetchFn = globalThis.fetch || window.fetch;
+      return fetchFn(input, init);
+    };
+
+    // Prepare request
+    const requestOptions: RequestInit = {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` }),
+      },
+      body: JSON.stringify({
+        status: status,
+        reviewComment: comment || ''
+      }),
+    };
+
+    // Make request using direct fetch
+    const response = await directFetch(url, requestOptions);
+
+    console.log('📡 Response status:', response.status);
+
+    if (!response.ok) {
+      let errorMessage = `HTTP ${response.status}`;
+      try {
+        const errorData = await response.json();
+        console.error('❌ Error response:', errorData);
+        errorMessage = errorData?.message || errorData?.error || errorMessage;
+      } catch (e) {
+        console.error('❌ Could not parse error response');
       }
-      
-      return {
-        success: response?.success !== undefined ? response.success : true,
-        message: response?.message || 'Incident updated successfully',
-        incident: incident
-      };
-    } catch (error) {
-      console.error('❌ Error updating incident:', error);
-      throw error;
+      throw new Error(errorMessage);
     }
-  },
+
+    const data = await response.json();
+    console.log('✅ Update response:', data);
+
+    return {
+      success: true,
+      message: data?.message || 'Incident updated successfully',
+      incident: data?.incident || data
+    };
+  } catch (error: any) {
+    console.error('❌ Error updating incident:', error);
+    
+    // Check if it's a connection error
+    if (error.message?.includes('Failed to fetch')) {
+      throw new Error('Cannot connect to server. Please make sure the backend is running on port 5001.');
+    }
+    
+    throw new Error(error?.message || 'Failed to update incident. Please try again.');
+  }
+},
+
+
 
   /**
    * Get incidents by ward (legacy endpoint)

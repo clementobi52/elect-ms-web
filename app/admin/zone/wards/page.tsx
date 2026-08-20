@@ -1,7 +1,7 @@
 // app/admin/zone/wards/page.tsx
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/use-toast';
@@ -41,36 +41,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
-
-interface ProgressBarProps extends React.HTMLAttributes<HTMLDivElement> {
-  value: number;
-  indicatorClassName?: string;
-}
-
-function Progress({
-  value,
-  className = '',
-  indicatorClassName = 'bg-primary',
-  ...props
-}: ProgressBarProps) {
-  return (
-    <div
-      className={`relative h-2 w-full overflow-hidden rounded-full bg-primary/20 ${className}`}
-      {...props}
-    >
-      <div
-        className={`h-full rounded-full transition-all ${indicatorClassName}`}
-        style={{ width: `${value}%` }}
-      />
-    </div>
-  );
-}
-
 import {
   AlertTriangle,
   Building2,
   MapPin,
-  Globe,
   Users,
   RefreshCw,
   Search,
@@ -79,30 +53,18 @@ import {
   ChevronDown,
   ChevronUp,
   Eye,
-  Mail,
-  CheckCircle,
-  Clock,
-  Shield,
   FileText,
-  BarChart3,
   MoreVertical,
-  Edit,
-  Trash2,
-  Activity,
-  MapPin as MapPinIcon,
-  Calendar,
   UserCheck,
-  UserX,
-  Plus,
-  Award,
-  TrendingUp,
-  TrendingDown,
-  Minus,
+  Loader2,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import AdminHeader from '@/components/admin/AdminHeader';
 import { apiClient } from '@/lib/api/client';
 
+// Types
 interface Ward {
   id: string;
   name: string;
@@ -136,19 +98,65 @@ interface WardStats {
   averageProgress: number;
 }
 
+interface PaginationData {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+// Progress Bar Component
+function ProgressBar({ 
+  value, 
+  className = '', 
+  indicatorClassName = 'bg-primary',
+  ...props 
+}: { 
+  value: number; 
+  className?: string; 
+  indicatorClassName?: string;
+  [key: string]: any;
+}) {
+  return (
+    <div
+      className={`relative h-2 w-full overflow-hidden rounded-full bg-primary/20 ${className}`}
+      {...props}
+    >
+      <div
+        className={`h-full rounded-full transition-all ${indicatorClassName}`}
+        style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
+      />
+    </div>
+  );
+}
+
 export default function ZoneWardsPage() {
   const router = useRouter();
   const { user } = useAuth();
   const { toast } = useToast();
 
+  // State
   const [wards, setWards] = useState<Ward[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedWard, setSelectedWard] = useState<Ward | null>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
+  
+  // Pagination State
+  const [page, setPage] = useState(1);
+  const [limit] = useState(20);
+  const [pagination, setPagination] = useState<PaginationData>({
+    total: 0,
+    page: 1,
+    limit: 20,
+    totalPages: 0
+  });
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
   const [stats, setStats] = useState<WardStats>({
     totalWards: 0,
     totalPollingUnits: 0,
@@ -163,13 +171,148 @@ export default function ZoneWardsPage() {
   });
   const [zoneName, setZoneName] = useState<string>('');
 
-  // Fetch wards and stats
+  // Fetch wards with pagination
+  const fetchWards = useCallback(async (pageNum: number = 1, search: string = '') => {
+    try {
+      const zoneId = user?.zoneId;
+      if (!zoneId) {
+        throw new Error('Zone ID not found');
+      }
+
+      setIsLoadingMore(pageNum > 1);
+
+      const params = new URLSearchParams();
+      params.append('page', pageNum.toString());
+      params.append('limit', limit.toString());
+      if (search) params.append('search', search);
+
+      const response = await apiClient.get<{ 
+        success: boolean; 
+        wards: any[]; 
+        pagination: PaginationData;
+      }>(
+        `/admin/zone/${zoneId}/wards?${params.toString()}`
+      );
+      
+      console.log('📡 Wards Response:', response);
+
+      if (response.success && response.wards) {
+        // ✅ Map the data properly
+        const mappedWards: Ward[] = response.wards.map((ward: any) => ({
+          id: ward.id || '',
+          name: ward.name || 'Unknown Ward',
+          code: ward.code || `W-${ward.id?.slice(0, 4) || '0000'}`,
+          zoneId: ward.zoneId || zoneId,
+          zoneName: ward.zoneName || ward.zone?.name || zoneName || 'Unknown Zone',
+          // ✅ Use the correct field names from your API
+          pollingUnits: ward.pollingUnits || ward.polling_unit_count || ward.totalPollingUnits || 0,
+          agents: ward.agents || ward.agentCount || ward.totalAgents || 0,
+          activeAgents: ward.activeAgents || ward.active_agents || 0,
+          resultsSubmitted: ward.resultsSubmitted || ward.results_submitted || ward.totalResults || 0,
+          pendingResults: ward.pendingResults || ward.pending_results || 0,
+          incidents: ward.incidents || ward.incidentCount || ward.totalIncidents || 0,
+          adminName: ward.adminName || ward.admin?.name || null,
+          adminId: ward.adminId || ward.admin?.id || null,
+          adminEmail: ward.adminEmail || ward.admin?.email || null,
+          progress: ward.progress || ward.completionRate || 0,
+          createdAt: ward.createdAt,
+          updatedAt: ward.updatedAt
+        }));
+
+        console.log('📡 Mapped wards sample:', mappedWards[0]);
+
+        if (pageNum === 1) {
+          setWards(mappedWards);
+        } else {
+          setWards(prev => [...prev, ...mappedWards]);
+        }
+        
+        if (response.pagination) {
+          setPagination(response.pagination);
+        }
+        
+        // ✅ Calculate stats from mapped wards
+        calculateStats(mappedWards);
+      }
+    } catch (error) {
+      console.error('Error fetching wards:', error);
+      throw error;
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [user?.zoneId, limit, zoneName]);
+
+  // Calculate stats
+  const calculateStats = useCallback((wardList: Ward[]) => {
+    console.log('📊 Calculating stats from:', wardList.length, 'wards');
+    
+    if (wardList.length === 0) {
+      setStats({
+        totalWards: 0,
+        totalPollingUnits: 0,
+        totalAgents: 0,
+        activeAgents: 0,
+        totalResults: 0,
+        pendingResults: 0,
+        verifiedResults: 0,
+        totalIncidents: 0,
+        criticalIncidents: 0,
+        averageProgress: 0,
+      });
+      return;
+    }
+
+    // Log sample data
+    console.log('📊 Sample ward data:', {
+      pollingUnits: wardList[0].pollingUnits,
+      agents: wardList[0].agents,
+      activeAgents: wardList[0].activeAgents,
+      resultsSubmitted: wardList[0].resultsSubmitted,
+      incidents: wardList[0].incidents,
+      progress: wardList[0].progress
+    });
+
+    const totalPollingUnits = wardList.reduce((sum, w) => sum + (Number(w.pollingUnits) || 0), 0);
+    const totalAgents = wardList.reduce((sum, w) => sum + (Number(w.agents) || 0), 0);
+    const activeAgents = wardList.reduce((sum, w) => sum + (Number(w.activeAgents) || 0), 0);
+    const totalResults = wardList.reduce((sum, w) => sum + (Number(w.resultsSubmitted) || 0), 0);
+    const pendingResults = wardList.reduce((sum, w) => sum + (Number(w.pendingResults) || 0), 0);
+    const totalIncidents = wardList.reduce((sum, w) => sum + (Number(w.incidents) || 0), 0);
+    
+    const criticalIncidents = wardList.filter(w => (Number(w.incidents) || 0) > 0).length;
+    
+    const totalProgress = wardList.reduce((sum, w) => sum + (Number(w.progress) || 0), 0);
+    const averageProgress = wardList.length > 0 
+      ? Math.round(totalProgress / wardList.length)
+      : 0;
+
+    const verifiedResults = Math.max(0, totalResults - pendingResults);
+
+    const newStats: WardStats = {
+      totalWards: wardList.length,
+      totalPollingUnits,
+      totalAgents,
+      activeAgents,
+      totalResults,
+      pendingResults,
+      verifiedResults,
+      totalIncidents,
+      criticalIncidents,
+      averageProgress,
+    };
+
+    console.log('📊 Calculated stats:', newStats);
+    setStats(newStats);
+  }, []);
+
+  // Fetch all data
   const fetchData = useCallback(async (showLoading = true) => {
     if (showLoading) {
       setLoading(true);
     } else {
       setRefreshing(true);
     }
+    setError(null);
 
     try {
       const zoneId = user?.zoneId;
@@ -178,78 +321,73 @@ export default function ZoneWardsPage() {
         throw new Error('Zone ID not found');
       }
 
-      // Fetch wards in zone using the existing API endpoint
-      const wardsResponse = await apiClient.get<{ success: boolean; wards: Ward[] }>(
-        `/admin/zone/${zoneId}/wards`
-      );
-      
-      console.log('📡 Wards Response:', wardsResponse);
+      console.log('📡 Fetching wards for zone:', zoneId);
 
-      if (wardsResponse.success && wardsResponse.wards) {
-        setWards(wardsResponse.wards);
+      // Fetch wards with pagination
+      await fetchWards(1, searchTerm);
+
+      // ✅ Also fetch zone stats for accurate numbers
+      try {
+        const statsResponse = await apiClient.get<{ success: boolean; stats: any }>(
+          `/admin/zone/${zoneId}/stats`
+        );
         
-        // Calculate stats from the wards data
-        const wardList = wardsResponse.wards;
-        const newStats: WardStats = {
-          totalWards: wardList.length,
-          totalPollingUnits: wardList.reduce((sum, w) => sum + (w.pollingUnits || 0), 0),
-          totalAgents: wardList.reduce((sum, w) => sum + (w.agents || 0), 0),
-          activeAgents: wardList.reduce((sum, w) => sum + (w.activeAgents || 0), 0),
-          totalResults: wardList.reduce((sum, w) => sum + (w.resultsSubmitted || 0), 0),
-          pendingResults: wardList.reduce((sum, w) => sum + (w.pendingResults || 0), 0),
-          verifiedResults: wardList.reduce((sum, w) => sum + ((w.resultsSubmitted || 0) - (w.pendingResults || 0)), 0),
-          totalIncidents: wardList.reduce((sum, w) => sum + (w.incidents || 0), 0),
-          criticalIncidents: wardList.filter(w => w.incidents > 0).length,
-          averageProgress: wardList.length > 0 
-            ? Math.round(wardList.reduce((sum, w) => sum + (w.progress || 0), 0) / wardList.length)
-            : 0,
-        };
-        setStats(newStats);
-      }
-
-      // Fetch zone stats for additional data
-      const statsResponse = await apiClient.get<{ success: boolean; stats: any }>(
-        `/admin/zone/${zoneId}/stats`
-      );
-      
-      console.log('📡 Zone Stats Response:', statsResponse);
-      
-      if (statsResponse.success && statsResponse.stats) {
-        // Merge additional stats if needed
-        setStats(prev => ({
-          ...prev,
-          totalAgents: statsResponse.stats.totalAgents || prev.totalAgents,
-          activeAgents: statsResponse.stats.activeAgents || prev.activeAgents,
-          totalResults: statsResponse.stats.totalResults || prev.totalResults,
-          pendingResults: statsResponse.stats.pendingResults || prev.pendingResults,
-          totalIncidents: statsResponse.stats.totalIncidents || prev.totalIncidents,
-          criticalIncidents: statsResponse.stats.criticalIncidents || prev.criticalIncidents,
-        }));
+        console.log('📡 Zone Stats Response:', statsResponse);
+        
+        if (statsResponse.success && statsResponse.stats) {
+          const s = statsResponse.stats;
+          setStats(prev => ({
+            ...prev,
+            totalPollingUnits: s.totalPollingUnits || prev.totalPollingUnits,
+            totalAgents: s.totalAgents || prev.totalAgents,
+            activeAgents: s.activeAgents || prev.activeAgents,
+            totalResults: s.totalResults || prev.totalResults,
+            pendingResults: s.pendingResults || prev.pendingResults,
+            totalIncidents: s.totalIncidents || prev.totalIncidents,
+            criticalIncidents: s.criticalIncidents || prev.criticalIncidents,
+            averageProgress: s.resultsProgress || prev.averageProgress,
+          }));
+        }
+      } catch (statsError) {
+        console.log('Could not fetch separate stats, using ward data');
       }
 
       // Set zone name
       if (user?.zoneName) {
         setZoneName(user.zoneName);
-      } else if (wardsResponse.wards && wardsResponse.wards.length > 0) {
-        const firstWard = wardsResponse.wards[0];
-        if (firstWard.zoneName) {
-          setZoneName(firstWard.zoneName);
-        }
       } else {
         setZoneName('your zone');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching wards:', error);
+      setError(error?.message || 'Failed to load wards');
       toast({
         title: "Error",
-        description: "Failed to load wards",
+        description: error?.message || "Failed to load wards",
         variant: "destructive",
       });
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user, toast]);
+  }, [user, searchTerm, fetchWards, toast]);
+
+  // Handle search
+  const handleSearch = (search: string) => {
+    setSearchTerm(search);
+    setPage(1);
+    setWards([]);
+    fetchWards(1, search);
+  };
+
+  // Handle load more
+  const handleLoadMore = () => {
+    if (page < pagination.totalPages) {
+      const nextPage = page + 1;
+      setPage(nextPage);
+      fetchWards(nextPage, searchTerm);
+    }
+  };
 
   // Initial load
   useEffect(() => {
@@ -260,22 +398,36 @@ export default function ZoneWardsPage() {
 
   // Handle refresh
   const handleRefresh = () => {
+    setPage(1);
+    setWards([]);
     fetchData(false);
   };
 
-  // Filter wards
-  const filteredWards = wards.filter(ward => {
-    const matchesSearch =
-      ward.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      ward.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      ward.adminName?.toLowerCase().includes(searchTerm.toLowerCase());
+  // Filter wards client-side
+  const filteredWards = useMemo(() => {
+    let result = wards;
 
-    if (filterStatus === 'all') return matchesSearch;
-    if (filterStatus === 'excellent') return matchesSearch && ward.progress >= 80;
-    if (filterStatus === 'ontrack') return matchesSearch && ward.progress >= 50 && ward.progress < 80;
-    if (filterStatus === 'attention') return matchesSearch && ward.progress < 50;
-    return matchesSearch;
-  });
+    // Search filter
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(ward =>
+        ward.name?.toLowerCase().includes(term) ||
+        ward.code?.toLowerCase().includes(term) ||
+        ward.adminName?.toLowerCase().includes(term)
+      );
+    }
+
+    // Status filter
+    if (filterStatus === 'excellent') {
+      result = result.filter(w => w.progress >= 80);
+    } else if (filterStatus === 'ontrack') {
+      result = result.filter(w => w.progress >= 50 && w.progress < 80);
+    } else if (filterStatus === 'attention') {
+      result = result.filter(w => w.progress < 50);
+    }
+
+    return result;
+  }, [wards, searchTerm, filterStatus]);
 
   // Get progress color
   const getProgressColor = (progress: number) => {
@@ -288,6 +440,9 @@ export default function ZoneWardsPage() {
   const clearFilters = () => {
     setSearchTerm('');
     setFilterStatus('all');
+    setPage(1);
+    setWards([]);
+    fetchWards(1, '');
   };
 
   // Loading skeleton
@@ -310,11 +465,50 @@ export default function ZoneWardsPage() {
     );
   }
 
+  // Error state
+  if (error) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <AdminHeader 
+          title="Zone Wards"
+          subtitle="Manage wards across your zone"
+        />
+        <div className="flex-1 container p-4 md:p-6">
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
+              <p className="text-lg font-medium text-red-600">{error}</p>
+              <Button 
+                variant="outline" 
+                className="mt-4"
+                onClick={handleRefresh}
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Retry
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col min-h-screen">
       <AdminHeader 
         title="Zone Wards"
         subtitle={`Manage wards across ${zoneName || 'your zone'}`}
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </Button>
+        }
       />
 
       <div className="flex-1 container p-4 md:p-6 space-y-6">
@@ -325,7 +519,7 @@ export default function ZoneWardsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Total Wards</p>
-                  <p className="text-2xl font-bold">{stats.totalWards || 0}</p>
+                  <p className="text-2xl font-bold">{pagination.total || stats.totalWards || 0}</p>
                 </div>
                 <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center">
                   <Building2 className="h-5 w-5 text-gray-600" />
@@ -396,7 +590,7 @@ export default function ZoneWardsPage() {
           <div className="p-4 bg-muted rounded-lg">
             <p className="text-sm text-muted-foreground">Average Progress</p>
             <p className="text-2xl font-bold">{stats.averageProgress || 0}%</p>
-            <Progress value={stats.averageProgress || 0} className="mt-2" />
+            <ProgressBar value={stats.averageProgress || 0} className="mt-2" />
           </div>
           <div className="p-4 bg-muted rounded-lg">
             <p className="text-sm text-muted-foreground">Pending Results</p>
@@ -420,7 +614,7 @@ export default function ZoneWardsPage() {
               <Input
                 placeholder="Search wards by name, code, or admin..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => handleSearch(e.target.value)}
                 className="pl-9"
               />
             </div>
@@ -463,11 +657,6 @@ export default function ZoneWardsPage() {
                   <option value="attention">Needs Attention (&lt;50%)</option>
                 </select>
               </div>
-              <div className="flex items-end">
-                <Button variant="default" size="sm" onClick={clearFilters}>
-                  Apply Filters
-                </Button>
-              </div>
             </div>
           )}
         </div>
@@ -479,17 +668,14 @@ export default function ZoneWardsPage() {
               <CardTitle>Wards</CardTitle>
               <CardDescription>
                 {wards.length === 0 ? 'No wards found' :
-                  `Showing ${filteredWards.length} of ${wards.length} wards`}
+                  `Showing ${filteredWards.length} of ${pagination.total || wards.length} wards`}
+                {pagination.totalPages > 1 && (
+                  <span className="ml-2 text-xs">
+                    (Page {pagination.page} of {pagination.totalPages})
+                  </span>
+                )}
               </CardDescription>
             </div>
-            <Button
-              variant="outline"
-              onClick={handleRefresh}
-              disabled={refreshing}
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-              {refreshing ? 'Refreshing...' : 'Refresh'}
-            </Button>
           </CardHeader>
           <CardContent>
             {wards.length === 0 ? (
@@ -505,23 +691,23 @@ export default function ZoneWardsPage() {
                 </Button>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Ward</TableHead>
-                      <TableHead>Admin</TableHead>
-                      <TableHead>Polling Units</TableHead>
-                      <TableHead>Agents</TableHead>
-                      <TableHead>Results</TableHead>
-                      <TableHead>Incidents</TableHead>
-                      <TableHead>Progress</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredWards.map((ward) => {
-                      return (
+              <>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Ward</TableHead>
+                        <TableHead>Admin</TableHead>
+                        <TableHead>Polling Units</TableHead>
+                        <TableHead>Agents</TableHead>
+                        <TableHead>Results</TableHead>
+                        <TableHead>Incidents</TableHead>
+                        <TableHead>Progress</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredWards.map((ward) => (
                         <TableRow key={ward.id}>
                           <TableCell>
                             <div>
@@ -571,7 +757,7 @@ export default function ZoneWardsPage() {
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <Progress 
+                              <ProgressBar 
                                 value={ward.progress} 
                                 className="w-20"
                                 indicatorClassName={getProgressColor(ward.progress)}
@@ -626,11 +812,64 @@ export default function ZoneWardsPage() {
                             </DropdownMenu>
                           </TableCell>
                         </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Pagination Controls */}
+                {pagination.totalPages > 1 && (
+                  <div className="flex flex-col sm:flex-row items-center justify-between mt-4 pt-4 border-t gap-4">
+                    <div className="text-sm text-muted-foreground">
+                      Showing {filteredWards.length} of {pagination.total} wards
+                      <span className="ml-2">
+                        (Page {pagination.page} of {pagination.totalPages})
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const prevPage = Math.max(1, page - 1);
+                          setPage(prevPage);
+                          setWards([]);
+                          fetchWards(prevPage, searchTerm);
+                        }}
+                        disabled={page <= 1 || isLoadingMore}
+                      >
+                        <ChevronLeft className="h-4 w-4 mr-1" />
+                        Previous
+                      </Button>
+                      
+                      <span className="text-sm text-muted-foreground px-2">
+                        {page} / {pagination.totalPages}
+                      </span>
+                      
+                      {page < pagination.totalPages && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleLoadMore}
+                          disabled={isLoadingMore}
+                        >
+                          {isLoadingMore ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Loading...
+                            </>
+                          ) : (
+                            <>
+                              Load More
+                              <ChevronRight className="h-4 w-4 ml-1" />
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -671,7 +910,7 @@ export default function ZoneWardsPage() {
                     <div>
                       <Label className="text-muted-foreground">Progress</Label>
                       <div className="flex items-center gap-2">
-                        <Progress 
+                        <ProgressBar 
                           value={selectedWard.progress} 
                           className="flex-1"
                           indicatorClassName={getProgressColor(selectedWard.progress)}
