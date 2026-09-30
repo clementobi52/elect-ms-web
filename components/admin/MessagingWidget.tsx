@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/use-toast';
 import { io, Socket } from 'socket.io-client';
+import { getSocketAuth } from '@/lib/tenant';
 import {
   Card,
   CardContent,
@@ -45,6 +46,7 @@ import {
 import { apiClient } from '@/lib/api/client';
 import { format } from 'date-fns';
 import { Label } from '@/components/ui/label';
+import { SOCKET_URL } from '@/lib/config';
 import {
   Dialog,
   DialogContent,
@@ -153,7 +155,6 @@ export function MessagingWidget({
   // Initialize Socket.IO connection
   useEffect(() => {
     const token = localStorage.getItem('authToken');
-    const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5001';
     
     if (!token || !user) return;
 
@@ -162,12 +163,17 @@ export function MessagingWidget({
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
+      // Identity comes from this handshake. The server verifies the token,
+      // resolves the tenant, and reads the user's role from the database.
+      // The `authenticate` event below is kept only as an ack; the server
+      // ignores its payload.
+      auth: getSocketAuth(token),
     });
 
     socketInstance.on('connect', () => {
       console.log('🔌 Messaging socket connected');
       setIsConnected(true);
-      
+
       if (user?.id) {
         socketInstance.emit('authenticate', {
           userId: user.id,

@@ -1,6 +1,8 @@
 // lib/api/incidents.ts
 
 import { apiClient } from './client';
+import { withTenantHeaders } from '@/lib/tenant';
+import { API_BASE_URL } from '@/lib/config';
 
 export interface Incident {
   ward: string | undefined;
@@ -98,7 +100,6 @@ export interface MapIncidentsResponse {
   message?: string;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
 /**
  * Enhanced coordinate extraction with better type safety
@@ -569,7 +570,6 @@ updateIncidentStatus: async (
 ): Promise<UpdateIncidentResponse> => {
   try {
     const token = localStorage.getItem('authToken');
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
     const url = `${API_BASE_URL}/admin/incidents/${incidentId}/status`;
     
     console.log('📡 [FRONTEND] Direct fetch - Updating incident:', {
@@ -591,10 +591,10 @@ updateIncidentStatus: async (
     // Prepare request
     const requestOptions: RequestInit = {
       method: 'PATCH',
-      headers: {
+      headers: withTenantHeaders({
         'Content-Type': 'application/json',
         ...(token && { 'Authorization': `Bearer ${token}` }),
-      },
+      }),
       body: JSON.stringify({
         status: status,
         reviewComment: comment || ''

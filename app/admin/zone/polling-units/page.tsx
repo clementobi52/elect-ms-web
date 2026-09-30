@@ -1,7 +1,7 @@
 // app/admin/zone/polling-units/page.tsx
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/use-toast';
@@ -65,10 +65,21 @@ import {
   MapPin,
   Calendar,
   Download,
+  Wifi,
+  WifiOff,
+  Globe,
+  Zap,
+  Activity,
+  BarChart3,
+  PieChart,
+  TrendingUp,
+  TrendingDown,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import AdminHeader from '@/components/admin/AdminHeader';
 import { apiClient } from '@/lib/api/client';
+import { getSocket, onConnectionChange, onSocketMessage, sendSocketMessage } from '@/lib/socket-service';
+import { Progress } from '@/components/ui/progress';
 
 // Type Definitions
 interface PollingUnit {
@@ -120,6 +131,9 @@ interface FilterState {
   ward: string;
   hasAgent: string;
   hasResult: string;
+  zone: string;
+  state: string;
+  lga: string;
 }
 
 // Helper Functions
@@ -138,7 +152,6 @@ const getInitials = (name: string): string => {
 };
 
 // API Base URL
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
 export default function ZonePollingUnitsPage() {
   const router = useRouter();
@@ -154,6 +167,11 @@ export default function ZonePollingUnitsPage() {
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [zoneName, setZoneName] = useState<string>('');
+  const [isConnected, setIsConnected] = useState(false);
+  const [unsubscribeConnection, setUnsubscribeConnection] = useState<(() => void) | null>(null);
+  const [unsubscribeMessages, setUnsubscribeMessages] = useState<(() => void) | null>(null);
+  const [socketInitialized, setSocketInitialized] = useState(false);
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
 
   // Filter State
   const [filters, setFilters] = useState<FilterState>({
@@ -162,6 +180,9 @@ export default function ZonePollingUnitsPage() {
     ward: 'all',
     hasAgent: 'all',
     hasResult: 'all',
+    zone: 'all',
+    state: 'all',
+    lga: 'all',
   });
 
   // Pagination State
@@ -187,17 +208,281 @@ export default function ZonePollingUnitsPage() {
     rejectedResults: 0,
   });
 
+  // ✅ Check if user is Situation Room
+  const isSituationRoom = user?.role === 'Situation Room Admin' || user?.role === 'Situation Room';
+
+  // ✅ Socket.IO setup
+  const setupSocketListeners = useCallback(() => {
+    if (socketInitialized) return;
+    
+    const socket = getSocket();
+    
+    const unsubConnection = onConnectionChange((connected) => {
+      console.log(`🔌 ZonePollingUnits: Socket connection status: ${connected}`);
+      setIsConnected(connected);
+      
+      if (connected && user?.id) {
+        // Join appropriate room based on role
+        if (isSituationRoom) {
+          sendSocketMessage('join-situation-room', {
+            userId: user.id,
+            role: user.role,
+            userName: user.name
+          });
+        } else if (user?.zoneId) {
+          sendSocketMessage('join-zone', {
+            zoneId: user.zoneId,
+            userId: user.id,
+            role: user.role,
+            userName: user.name
+          });
+        }
+        
+        // Request polling units data
+        sendSocketMessage('request-polling-units', {
+          zoneId: user?.zoneId || 'all',
+          userId: user.id,
+          situationRoom: isSituationRoom
+        });
+      }
+    });
+
+    const unsubMessages = onSocketMessage((event, data) => {
+      console.log(`📨 ZonePollingUnits: Handling socket event: ${event}`, data);
+      
+      switch (event) {
+        case 'polling-units-update':
+          console.log('📊 Polling units update received:', data);
+          if (data && data.pollingUnits) {
+            const uniqueUnits = deduplicateById(data.pollingUnits);
+            setPollingUnits(uniqueUnits);
+            if (data.stats) {
+              setStats(data.stats);
+            }
+            if (data.pagination) {
+              setPagination(data.pagination);
+            }
+          }
+          break;
+          
+        case 'polling-unit-added':
+          console.log('➕ New polling unit added:', data);
+          if (data && data.pollingUnit) {
+            setPollingUnits(prev => {
+              const exists = prev.some(u => u.id === data.pollingUnit.id);
+              if (exists) return prev;
+              return [data.pollingUnit, ...prev];
+            });
+            setStats(prev => ({
+              ...prev,
+              total: prev.total + 1
+            }));
+            toast({
+              title: "📊 New Polling Unit",
+              description: `${data.pollingUnit.name} has been added.`,
+              duration: 5000,
+            });
+          }
+          break;
+          
+        case 'polling-unit-updated':
+          console.log('🔄 Polling unit updated:', data);
+          if (data && data.pollingUnit) {
+            setPollingUnits(prev => 
+              prev.map(unit => 
+                unit.id === data.pollingUnit.id 
+                  ? { ...unit, ...data.pollingUnit }
+                  : unit
+              )
+            );
+          }
+          break;
+          
+        case 'polling-unit-removed':
+          console.log('🗑️ Polling unit removed:', data);
+          if (data && data.pollingUnitId) {
+            setPollingUnits(prev => 
+              prev.filter(unit => unit.id !== data.pollingUnitId)
+            );
+            setStats(prev => ({
+              ...prev,
+              total: Math.max(0, prev.total - 1)
+            }));
+            toast({
+              title: "🗑️ Polling Unit Removed",
+              description: data.message || "A polling unit has been removed.",
+              duration: 3000,
+            });
+          }
+          break;
+          
+        case 'agent-assigned':
+          console.log('👤 Agent assigned:', data);
+          if (data && data.pollingUnitId && data.agent) {
+            setPollingUnits(prev => 
+              prev.map(unit => 
+                unit.id === data.pollingUnitId 
+                  ? { 
+                      ...unit, 
+                      agentId: data.agent.id,
+                      agentName: data.agent.name,
+                      agentStatus: data.agent.status || 'Offline'
+                    }
+                  : unit
+              )
+            );
+            setStats(prev => ({
+              ...prev,
+              withAgents: prev.withAgents + 1,
+              withoutAgents: Math.max(0, prev.withoutAgents - 1)
+            }));
+            toast({
+              title: "👤 Agent Assigned",
+              description: `${data.agent.name} assigned to polling unit.`,
+              duration: 4000,
+            });
+          }
+          break;
+          
+        case 'result-submitted':
+          console.log('📄 Result submitted:', data);
+          if (data && data.pollingUnitId) {
+            setPollingUnits(prev => 
+              prev.map(unit => 
+                unit.id === data.pollingUnitId 
+                  ? { 
+                      ...unit, 
+                      resultStatus: 'Pending',
+                      hasResults: true
+                    }
+                  : unit
+              )
+            );
+            setStats(prev => ({
+              ...prev,
+              withResults: prev.withResults + 1,
+              withoutResults: Math.max(0, prev.withoutResults - 1),
+              pendingResults: prev.pendingResults + 1
+            }));
+            toast({
+              title: "📄 Result Submitted",
+              description: data.pollingUnitName 
+                ? `${data.pollingUnitName} has submitted results.`
+                : "A polling unit has submitted results.",
+              duration: 5000,
+            });
+          }
+          break;
+          
+        case 'result-approved':
+          console.log('✅ Result approved:', data);
+          if (data && data.pollingUnitId) {
+            setPollingUnits(prev => 
+              prev.map(unit => 
+                unit.id === data.pollingUnitId 
+                  ? { ...unit, resultStatus: 'Verified' }
+                  : unit
+              )
+            );
+            setStats(prev => ({
+              ...prev,
+              pendingResults: Math.max(0, prev.pendingResults - 1),
+              verifiedResults: prev.verifiedResults + 1
+            }));
+            toast({
+              title: "✅ Result Approved",
+              description: data.pollingUnitName 
+                ? `${data.pollingUnitName} result has been approved.`
+                : "A result has been approved.",
+              duration: 3000,
+            });
+          }
+          break;
+          
+        case 'result-rejected':
+          console.log('❌ Result rejected:', data);
+          if (data && data.pollingUnitId) {
+            setPollingUnits(prev => 
+              prev.map(unit => 
+                unit.id === data.pollingUnitId 
+                  ? { ...unit, resultStatus: 'Rejected' }
+                  : unit
+              )
+            );
+            setStats(prev => ({
+              ...prev,
+              pendingResults: Math.max(0, prev.pendingResults - 1),
+              rejectedResults: prev.rejectedResults + 1
+            }));
+            toast({
+              title: "❌ Result Rejected",
+              description: data.pollingUnitName 
+                ? `${data.pollingUnitName} result has been rejected.`
+                : "A result has been rejected.",
+              duration: 3000,
+              variant: "destructive",
+            });
+          }
+          break;
+          
+        case 'notification':
+          if (data.type === 'polling-unit') {
+            toast({
+              title: data.title || "Notification",
+              description: data.message || "",
+              duration: 4000,
+            });
+          }
+          break;
+          
+        default:
+          break;
+      }
+    });
+
+    setUnsubscribeConnection(() => unsubConnection);
+    setUnsubscribeMessages(() => unsubMessages);
+    setSocketInitialized(true);
+
+    if (socket && socket.connected) {
+      setIsConnected(true);
+      if (isSituationRoom) {
+        sendSocketMessage('join-situation-room', {
+          userId: user.id,
+          role: user.role,
+          userName: user.name
+        });
+        sendSocketMessage('request-polling-units', {
+          zoneId: 'all',
+          userId: user.id,
+          situationRoom: true
+        });
+      } else if (user?.zoneId) {
+        sendSocketMessage('join-zone', {
+          zoneId: user.zoneId,
+          userId: user.id,
+          role: user.role,
+          userName: user.name
+        });
+        sendSocketMessage('request-polling-units', {
+          zoneId: user.zoneId,
+          userId: user.id
+        });
+      }
+    }
+
+    return () => {
+      if (unsubConnection) unsubConnection();
+      if (unsubMessages) unsubMessages();
+      setSocketInitialized(false);
+    };
+  }, [user, toast, isSituationRoom]);
+
   // Fetch polling units with pagination and filters
   const fetchPollingUnits = useCallback(async (pageNum: number = 1, currentFilters: FilterState = filters) => {
     try {
-      const zoneId = user?.zoneId;
-      if (!zoneId) {
-        throw new Error('Zone ID not found');
-      }
-
-      setIsLoadingMore(pageNum > 1);
-
-      // Build query params
+      // For Situation Room, use the global endpoint
+      let url = '';
       const params = new URLSearchParams();
       params.append('page', pageNum.toString());
       params.append('limit', limit.toString());
@@ -206,8 +491,22 @@ export default function ZonePollingUnitsPage() {
       if (currentFilters.ward !== 'all') params.append('wardId', currentFilters.ward);
       if (currentFilters.hasAgent !== 'all') params.append('hasAgent', currentFilters.hasAgent);
       if (currentFilters.hasResult !== 'all') params.append('hasResult', currentFilters.hasResult);
+      if (currentFilters.zone !== 'all') params.append('zoneId', currentFilters.zone);
+      if (currentFilters.state !== 'all') params.append('stateId', currentFilters.state);
+      if (currentFilters.lga !== 'all') params.append('lgaId', currentFilters.lga);
 
-      const url = `/admin/zone/${zoneId}/polling-units?${params.toString()}`;
+      setIsLoadingMore(pageNum > 1);
+
+      if (isSituationRoom) {
+        // ✅ Situation Room sees all polling units
+        url = `/admin/situation/polling-units?${params.toString()}`;
+      } else if (user?.zoneId) {
+        // Zone Admin sees only their zone
+        url = `/admin/zone/${user.zoneId}/polling-units?${params.toString()}`;
+      } else {
+        throw new Error('No zone ID found');
+      }
+
       console.log('📡 Fetching URL:', url);
 
       const response = await apiClient.get<{
@@ -217,7 +516,7 @@ export default function ZonePollingUnitsPage() {
         stats?: PollingUnitStats;
       }>(url);
 
-      console.log('📡 Response:', response);
+      console.log('📡 Response received:', response);
 
       if (response.success && response.pollingUnits) {
         const uniqueUnits = deduplicateById(response.pollingUnits);
@@ -235,64 +534,24 @@ export default function ZonePollingUnitsPage() {
           setPagination(response.pagination);
         }
 
-        // Update stats
         if (response.stats) {
           setStats(response.stats);
-        } else {
-          calculateStats(uniqueUnits, response.pagination?.total || uniqueUnits.length);
         }
+      } else {
+        throw new Error('Invalid response format');
       }
     } catch (error) {
       console.error('Error fetching polling units:', error);
       setError('Failed to load polling units');
+      toast({
+        title: "Error",
+        description: "Failed to load polling units",
+        variant: "destructive",
+      });
     } finally {
       setIsLoadingMore(false);
     }
-  }, [user?.zoneId, limit, filters]);
-
-  // Calculate stats from data
-  const calculateStats = (units: PollingUnit[], totalUnits: number) => {
-    const withAgents = units.filter(u => u.agentId && u.agentId !== null && u.agentId !== '').length;
-    const withoutAgents = units.filter(u => !u.agentId || u.agentId === null || u.agentId === '').length;
-    
-    const withResults = units.filter(u => 
-      u.resultStatus && 
-      u.resultStatus !== 'Not Submitted' && 
-      u.resultStatus !== 'not_submitted'
-    ).length;
-    
-    const withoutResults = units.filter(u => 
-      !u.resultStatus || 
-      u.resultStatus === 'Not Submitted' || 
-      u.resultStatus === 'not_submitted'
-    ).length;
-    
-    const verifiedResults = units.filter(u => 
-      u.resultStatus === 'Verified' || 
-      u.resultStatus === 'verified'
-    ).length;
-    
-    const pendingResults = units.filter(u => 
-      u.resultStatus === 'Pending' || 
-      u.resultStatus === 'pending'
-    ).length;
-    
-    const rejectedResults = units.filter(u => 
-      u.resultStatus === 'Rejected' || 
-      u.resultStatus === 'rejected'
-    ).length;
-
-    setStats({
-      total: totalUnits || units.length,
-      withAgents,
-      withoutAgents,
-      withResults,
-      withoutResults,
-      verifiedResults,
-      pendingResults,
-      rejectedResults,
-    });
-  };
+  }, [user?.zoneId, limit, filters, toast, isSituationRoom]);
 
   // Fetch all data
   const fetchData = useCallback(async (showLoading = true) => {
@@ -304,20 +563,17 @@ export default function ZonePollingUnitsPage() {
     setError(null);
 
     try {
-      const zoneId = user?.zoneId;
-      if (!zoneId) {
-        throw new Error('Zone ID not found');
-      }
-
       // Set zone name
-      if (user?.zoneName) {
+      if (isSituationRoom) {
+        setZoneName('All Zones');
+      } else if (user?.zoneName) {
         setZoneName(user.zoneName);
       } else {
         setZoneName('your zone');
       }
 
-      // Fetch polling units with current filters
       await fetchPollingUnits(1, filters);
+      setupSocketListeners();
 
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -331,7 +587,7 @@ export default function ZonePollingUnitsPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user, filters, fetchPollingUnits, toast]);
+  }, [user, filters, fetchPollingUnits, toast, setupSocketListeners, isSituationRoom]);
 
   // Handle filter change
   const handleFilterChange = (key: keyof FilterState, value: string) => {
@@ -342,7 +598,7 @@ export default function ZonePollingUnitsPage() {
     fetchPollingUnits(1, newFilters);
   };
 
-  // Handle search
+  // Handle search with debounce
   const handleSearch = (search: string) => {
     handleFilterChange('search', search);
   };
@@ -371,6 +627,9 @@ export default function ZonePollingUnitsPage() {
       ward: 'all',
       hasAgent: 'all',
       hasResult: 'all',
+      zone: 'all',
+      state: 'all',
+      lga: 'all',
     };
     setFilters(resetFilters);
     setPage(1);
@@ -380,21 +639,37 @@ export default function ZonePollingUnitsPage() {
 
   // Initial load
   useEffect(() => {
-    if (user?.zoneId) {
+    if (user?.id) {
       fetchData(true);
     }
-  }, [user?.zoneId]);
 
-  // Get unique wards for filter
+    return () => {
+      if (unsubscribeConnection) {
+        unsubscribeConnection();
+      }
+      if (unsubscribeMessages) {
+        unsubscribeMessages();
+      }
+    };
+  }, [user?.id]);
+
+  // Get unique values for filters
   const uniqueWards = useMemo(() => {
     return Array.from(new Set(pollingUnits.map(u => u.wardName))).filter(Boolean);
   }, [pollingUnits]);
 
-  // Filter polling units client-side (for additional filtering)
+  const uniqueZones = useMemo(() => {
+    return Array.from(new Set(pollingUnits.map(u => u.zoneName))).filter(Boolean);
+  }, [pollingUnits]);
+
+  const uniqueStates = useMemo(() => {
+    return Array.from(new Set(pollingUnits.map(u => u.stateName))).filter(Boolean);
+  }, [pollingUnits]);
+
+  // Filter polling units client-side
   const filteredUnits = useMemo(() => {
     let units = pollingUnits;
 
-    // Client-side filtering for fields not handled by API
     if (filters.status === 'online') {
       units = units.filter(u => u.agentStatus === 'Online');
     } else if (filters.status === 'offline') {
@@ -446,15 +721,18 @@ export default function ZonePollingUnitsPage() {
     filters.status !== 'all' || 
     filters.ward !== 'all' || 
     filters.hasAgent !== 'all' || 
-    filters.hasResult !== 'all';
+    filters.hasResult !== 'all' ||
+    filters.zone !== 'all' ||
+    filters.state !== 'all' ||
+    filters.lga !== 'all';
 
   // Loading skeleton
   if (loading) {
     return (
       <div className="flex flex-col min-h-screen">
         <AdminHeader 
-          title="Zone Polling Units"
-          subtitle="Manage polling units across all wards in your zone"
+          title={isSituationRoom ? "Situation Room - Polling Units" : "Zone Polling Units"}
+          subtitle={isSituationRoom ? "Viewing polling units across all zones" : "Manage polling units across all wards in your zone"}
         />
         <div className="flex-1 container p-4 md:p-6 space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -471,11 +749,66 @@ export default function ZonePollingUnitsPage() {
   return (
     <div className="flex flex-col min-h-screen">
       <AdminHeader 
-        title="Zone Polling Units"
-        subtitle={`Manage polling units across all wards in ${zoneName || 'your zone'}`}
+        title={isSituationRoom ? "📊 Situation Room - Polling Units" : "Zone Polling Units"}
+        subtitle={
+          isSituationRoom 
+            ? `Viewing all polling units across all zones ${!isConnected ? '🔴 Offline' : '🟢 Live'}`
+            : `Manage polling units across all wards in ${zoneName || 'your zone'} ${!isConnected ? '🔴 Offline' : '🟢 Live'}`
+        }
       />
 
       <div className="flex-1 container p-4 md:p-6 space-y-6">
+        {/* Connection Status */}
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <Badge variant={isConnected ? "default" : "destructive"} className="hidden sm:flex">
+              {isConnected ? (
+                <><Wifi className="h-3 w-3 mr-1" /> Live</>
+              ) : (
+                <><WifiOff className="h-3 w-3 mr-1" /> Offline</>
+              )}
+            </Badge>
+            {isSituationRoom && (
+              <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+                <Globe className="h-3 w-3 mr-1" />
+                Global View
+              </Badge>
+            )}
+          </div>
+          {!isConnected && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => {
+                setSocketInitialized(false);
+                setupSocketListeners();
+              }}
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Reconnect
+            </Button>
+          )}
+        </div>
+
+        {/* Connection Status Banner */}
+        {!isConnected && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-center gap-2 text-sm text-yellow-800">
+            <AlertTriangle className="h-4 w-4" />
+            <span>Real-time connection lost. Data may not show latest updates.</span>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="ml-auto bg-white"
+              onClick={() => {
+                setSocketInitialized(false);
+                setupSocketListeners();
+              }}
+            >
+              Reconnect
+            </Button>
+          </div>
+        )}
+
         {/* Error Message */}
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-2">
@@ -495,78 +828,120 @@ export default function ZonePollingUnitsPage() {
           </div>
         )}
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <Card>
+        {/* Stats Cards - Enhanced for Situation Room */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          <Card className="bg-gradient-to-br from-blue-50 to-blue-100/50 border-blue-200">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Total Units</p>
-                  <p className="text-2xl font-bold">{stats.total || 0}</p>
+                  <p className="text-sm text-blue-700 font-medium">Total Units</p>
+                  <p className="text-2xl font-bold text-blue-900">{stats.total || 0}</p>
                 </div>
-                <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center">
-                  <Building2 className="h-5 w-5 text-gray-600" />
+                <div className="h-10 w-10 rounded-full bg-blue-200 flex items-center justify-center">
+                  <Building2 className="h-5 w-5 text-blue-700" />
                 </div>
               </div>
               {pagination.total > 0 && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Showing {pollingUnits.length} of {pagination.total} total
+                <p className="text-xs text-blue-600 mt-1">
+                  Showing {pollingUnits.length} of {pagination.total}
                 </p>
               )}
             </CardContent>
           </Card>
 
-          <Card className="border-green-200 bg-green-50/50">
+          <Card className="bg-gradient-to-br from-green-50 to-green-100/50 border-green-200">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">With Agents</p>
-                  <p className="text-2xl font-bold text-green-600">{stats.withAgents || 0}</p>
+                  <p className="text-sm text-green-700 font-medium">With Agents</p>
+                  <p className="text-2xl font-bold text-green-900">{stats.withAgents || 0}</p>
                 </div>
-                <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
-                  <UserCheck className="h-5 w-5 text-green-600" />
+                <div className="h-10 w-10 rounded-full bg-green-200 flex items-center justify-center">
+                  <UserCheck className="h-5 w-5 text-green-700" />
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-xs text-green-600 mt-1">
                 {stats.total > 0 ? Math.round((stats.withAgents / stats.total) * 100) : 0}% assigned
               </p>
             </CardContent>
           </Card>
 
-          <Card className="border-yellow-200 bg-yellow-50/50">
+          <Card className="bg-gradient-to-br from-yellow-50 to-yellow-100/50 border-yellow-200">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">With Results</p>
-                  <p className="text-2xl font-bold text-yellow-600">{stats.withResults || 0}</p>
+                  <p className="text-sm text-yellow-700 font-medium">With Results</p>
+                  <p className="text-2xl font-bold text-yellow-900">{stats.withResults || 0}</p>
                 </div>
-                <div className="h-10 w-10 rounded-full bg-yellow-100 flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-yellow-600" />
+                <div className="h-10 w-10 rounded-full bg-yellow-200 flex items-center justify-center">
+                  <FileText className="h-5 w-5 text-yellow-700" />
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-xs text-yellow-600 mt-1">
                 {stats.total > 0 ? Math.round((stats.withResults / stats.total) * 100) : 0}% submitted
               </p>
             </CardContent>
           </Card>
 
-          <Card className="border-blue-200 bg-blue-50/50">
+          <Card className="bg-gradient-to-br from-purple-50 to-purple-100/50 border-purple-200">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Verified Results</p>
-                  <p className="text-2xl font-bold text-blue-600">{stats.verifiedResults || 0}</p>
+                  <p className="text-sm text-purple-700 font-medium">Verified</p>
+                  <p className="text-2xl font-bold text-purple-900">{stats.verifiedResults || 0}</p>
                 </div>
-                <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                  <CheckCircle className="h-5 w-5 text-blue-600" />
+                <div className="h-10 w-10 rounded-full bg-purple-200 flex items-center justify-center">
+                  <CheckCircle className="h-5 w-5 text-purple-700" />
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-xs text-purple-600 mt-1">
                 {stats.withResults > 0 ? Math.round((stats.verifiedResults / stats.withResults) * 100) : 0}% verified
               </p>
             </CardContent>
           </Card>
+
+          <Card className="bg-gradient-to-br from-red-50 to-red-100/50 border-red-200">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-red-700 font-medium">Pending</p>
+                  <p className="text-2xl font-bold text-red-900">{stats.pendingResults || 0}</p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-red-200 flex items-center justify-center">
+                  <Clock className="h-5 w-5 text-red-700" />
+                </div>
+              </div>
+              <p className="text-xs text-red-600 mt-1">
+                {stats.withResults > 0 ? Math.round((stats.pendingResults / stats.withResults) * 100) : 0}% pending
+              </p>
+            </CardContent>
+          </Card>
         </div>
+
+        {/* Progress Bar for Overall Completion */}
+        <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <p className="text-sm font-medium text-gray-700">Overall Progress</p>
+                <p className="text-xs text-gray-500">
+                  {stats.withResults} of {stats.total} polling units have submitted results
+                </p>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="w-32 sm:w-48">
+                  <Progress 
+                    value={stats.total > 0 ? (stats.withResults / stats.total) * 100 : 0} 
+                    className="h-2" 
+                  />
+                </div>
+                <span className="text-sm font-bold text-blue-600">
+                  {stats.total > 0 ? Math.round((stats.withResults / stats.total) * 100) : 0}%
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Search and Filters */}
         <div className="space-y-4">
@@ -574,13 +949,33 @@ export default function ZonePollingUnitsPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by name, code, ward, or agent..."
+                placeholder={isSituationRoom ? "Search polling units across all zones..." : "Search by name, code, ward, or agent..."}
                 value={filters.search}
                 onChange={(e) => handleSearch(e.target.value)}
                 className="pl-9"
               />
             </div>
             <div className="flex gap-2 flex-wrap">
+              {/* View Mode Toggle */}
+              <div className="flex border rounded-md overflow-hidden">
+                <Button
+                  variant={viewMode === 'table' ? 'default' : 'ghost'}
+                  size="sm"
+                  className="rounded-none"
+                  onClick={() => setViewMode('table')}
+                >
+                  <Table className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                  size="sm"
+                  className="rounded-none"
+                  onClick={() => setViewMode('grid')}
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </Button>
+              </div>
+
               <Button
                 variant="outline"
                 onClick={() => setShowFilters(!showFilters)}
@@ -622,9 +1017,9 @@ export default function ZonePollingUnitsPage() {
             </div>
           </div>
 
-          {/* Filter Panel */}
+          {/* Enhanced Filter Panel */}
           {showFilters && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted rounded-lg">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4 bg-muted rounded-lg">
               <div>
                 <Label className="text-xs text-muted-foreground">Agent Status</Label>
                 <select
@@ -651,6 +1046,36 @@ export default function ZonePollingUnitsPage() {
                   ))}
                 </select>
               </div>
+              {isSituationRoom && (
+                <>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Zone</Label>
+                    <select
+                      className="w-full mt-1 px-3 py-2 bg-background border rounded-md text-sm"
+                      value={filters.zone}
+                      onChange={(e) => handleFilterChange('zone', e.target.value)}
+                    >
+                      <option value="all">All Zones</option>
+                      {uniqueZones.map((zone) => (
+                        <option key={zone} value={zone}>{zone}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">State</Label>
+                    <select
+                      className="w-full mt-1 px-3 py-2 bg-background border rounded-md text-sm"
+                      value={filters.state}
+                      onChange={(e) => handleFilterChange('state', e.target.value)}
+                    >
+                      <option value="all">All States</option>
+                      {uniqueStates.map((state) => (
+                        <option key={state} value={state}>{state}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
               <div>
                 <Label className="text-xs text-muted-foreground">Agent Assignment</Label>
                 <select
@@ -683,7 +1108,10 @@ export default function ZonePollingUnitsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle>Polling Units</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="h-5 w-5" />
+                Polling Units
+              </CardTitle>
               <CardDescription>
                 {pollingUnits.length === 0 ? 'No polling units found' :
                   `Showing ${filteredUnits.length} of ${pagination.total || pollingUnits.length} units`}
@@ -699,12 +1127,17 @@ export default function ZonePollingUnitsPage() {
                 )}
               </CardDescription>
             </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-xs">
+                Total: {pagination.total || 0}
+              </Badge>
+            </div>
           </CardHeader>
           <CardContent>
             {pollingUnits.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Building2 className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                <p>No polling units found in your zone</p>
+                <p>No polling units found</p>
                 {hasActiveFilters && (
                   <Button variant="link" onClick={clearFilters} className="mt-2">
                     Clear filters to see all units
@@ -725,7 +1158,8 @@ export default function ZonePollingUnitsPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Name / Code</TableHead>
-                        <TableHead>Ward</TableHead>
+                        <TableHead>Zone / Ward</TableHead>
+                        {isSituationRoom && <TableHead>State / LGA</TableHead>}
                         <TableHead>Agent</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Voters</TableHead>
@@ -742,7 +1176,20 @@ export default function ZonePollingUnitsPage() {
                               <p className="text-sm text-muted-foreground">{unit.code}</p>
                             </div>
                           </TableCell>
-                          <TableCell>{unit.wardName || 'Unknown'}</TableCell>
+                          <TableCell>
+                            <div>
+                              <p className="text-sm">{unit.zoneName || 'N/A'}</p>
+                              <p className="text-xs text-muted-foreground">{unit.wardName || 'Unknown'}</p>
+                            </div>
+                          </TableCell>
+                          {isSituationRoom && (
+                            <TableCell>
+                              <div>
+                                <p className="text-sm">{unit.stateName || 'N/A'}</p>
+                                <p className="text-xs text-muted-foreground">{unit.lgaName || 'N/A'}</p>
+                              </div>
+                            </TableCell>
+                          )}
                           <TableCell>
                             {unit.agentName ? (
                               <div className="flex items-center gap-1 text-sm">
@@ -904,8 +1351,32 @@ export default function ZonePollingUnitsPage() {
                       <p className="font-medium">{selectedUnit.wardName || 'Unknown'}</p>
                     </div>
                     <div>
+                      <Label className="text-muted-foreground">Zone</Label>
+                      <p className="font-medium">{selectedUnit.zoneName || 'Unknown'}</p>
+                    </div>
+                  </div>
+
+                  {isSituationRoom && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label className="text-muted-foreground">State</Label>
+                        <p className="font-medium">{selectedUnit.stateName || 'Unknown'}</p>
+                      </div>
+                      <div>
+                        <Label className="text-muted-foreground">LGA</Label>
+                        <p className="font-medium">{selectedUnit.lgaName || 'Unknown'}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
                       <Label className="text-muted-foreground">Registered Voters</Label>
                       <p className="font-medium">{selectedUnit.registeredVoters || 0}</p>
+                    </div>
+                    <div>
+                      <Label className="text-muted-foreground">Address</Label>
+                      <p className="font-medium">{selectedUnit.address || 'N/A'}</p>
                     </div>
                   </div>
 
@@ -1001,3 +1472,6 @@ export default function ZonePollingUnitsPage() {
     </div>
   );
 }
+
+// Add missing import for LayoutGrid
+import { LayoutGrid } from 'lucide-react';

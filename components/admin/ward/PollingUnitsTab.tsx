@@ -24,7 +24,9 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/auth-context';
+import { getSocketAuth, withTenantHeaders } from '@/lib/tenant';
 import { io, Socket } from 'socket.io-client';
+import { API_BASE_URL, SOCKET_URL } from '@/lib/config';
 
 interface PollingUnit {
   id: string;
@@ -55,8 +57,6 @@ export function PollingUnitsTab({ wardId }: PollingUnitsTabProps) {
   const [isConnected, setIsConnected] = useState(false);
   const [socket, setSocket] = useState<Socket | null>(null);
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
-  const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5001';
   const targetWardId = wardId || user?.wardId;
 
   // ✅ Socket.IO setup
@@ -75,9 +75,10 @@ export function PollingUnitsTab({ wardId }: PollingUnitsTabProps) {
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
-      auth: {
-        token: token,
-      },
+      // Both the token and the tenant are required: io.use() resolves the
+      // tenant from the handshake and refuses the connection with 400 if the
+      // slug is missing, then checks it against the token's tenantId.
+      auth: getSocketAuth(token),
     });
 
     newSocket.on('connect', () => {
@@ -282,10 +283,10 @@ export function PollingUnitsTab({ wardId }: PollingUnitsTabProps) {
       }
 
       const response = await fetch(`${API_BASE_URL}/admin/ward/${targetWardId}/polling-units`, {
-        headers: {
+        headers: withTenantHeaders({
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
-        },
+        }),
       });
 
       if (!response.ok) {

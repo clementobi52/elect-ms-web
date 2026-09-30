@@ -13,6 +13,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { PollingUnit } from '../types';
+import { withTenantHeaders } from '@/lib/tenant';
+import { API_BASE_URL } from '@/lib/config';
 
 interface EditPollingUnitDialogProps {
   open: boolean;
@@ -21,7 +23,6 @@ interface EditPollingUnitDialogProps {
   onSuccess: () => void;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
 export const EditPollingUnitDialog: React.FC<EditPollingUnitDialogProps> = ({
   open,
@@ -56,10 +57,10 @@ export const EditPollingUnitDialog: React.FC<EditPollingUnitDialogProps> = ({
       const token = localStorage.getItem('authToken');
       const response = await fetch(`${API_BASE_URL}/admin/polling-units/${pollingUnit.id}`, {
         method: 'PUT',
-        headers: {
+        headers: withTenantHeaders({
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify({
           name: formData.name,
           latitude: parseFloat(formData.latitude),

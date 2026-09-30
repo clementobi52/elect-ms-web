@@ -4,6 +4,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/use-toast';
+import { withTenantHeaders } from '@/lib/tenant';
+import { API_BASE_URL } from '@/lib/config';
 
 export interface ZoneStats {
   totalWards: number;
@@ -233,7 +235,6 @@ const DEMO_ZONE_DATA: ZoneData = {
   ]
 };
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
 // Helper function to calculate time ago
 const getTimeAgo = (dateString?: string): string => {
@@ -288,10 +289,10 @@ export function useZoneData(options?: {
         throw new Error('No authentication token found');
       }
 
-      const headers = {
+      const headers = withTenantHeaders({
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
-      };
+      });
 
       // Fetch all data in parallel
       const [statsRes, wardsRes, incidentsRes, pollingUnitsRes, wardAdminsRes] = await Promise.allSettled([

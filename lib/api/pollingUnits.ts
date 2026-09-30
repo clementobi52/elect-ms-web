@@ -1,5 +1,7 @@
 // lib/api/pollingUnits.ts
 import { apiClient } from './client';
+import { withTenantHeaders } from '@/lib/tenant';
+import { API_BASE_URL } from '@/lib/config';
 
 export interface PollingUnit {
   id: string;
@@ -22,6 +24,11 @@ export interface PollingUnit {
   updatedAt?: string;
 }
 
+export interface PollingUnitOption {
+  id: string;
+  name: string;
+}
+
 export interface PollingUnitsResponse {
   success: boolean;
   pollingUnits: PollingUnit[];
@@ -39,6 +46,181 @@ export interface PollingUnitStats {
   pendingResults: number;
   rejectedResults: number;
 }
+
+// ============================================
+// SEARCH FUNCTIONS FOR SEARCHABLE SELECT
+// ============================================
+
+// lib/api/pollingUnits.ts - Updated search functions
+
+/**
+ * Search polling units with server-side filtering
+ */
+export const searchPollingUnits = async (search: string): Promise<PollingUnitOption[]> => {
+  try {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      console.warn('No auth token found');
+      return [];
+    }
+
+    const params = new URLSearchParams();
+    params.append('limit', '50');
+    if (search && search.length >= 2) {
+      params.append('search', search);
+    }
+    
+    // Use the correct endpoint - matches your routes
+    const url = `${API_BASE_URL}/admin/system/polling-units?${params.toString()}`;
+    console.log('📤 Searching polling units:', url);
+    
+    const response = await fetch(url, {
+      headers: withTenantHeaders({
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ API Error Response:', errorText);
+      throw new Error(`HTTP error ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('📥 Search response:', data);
+    
+    // Extract polling units from response - handle different response formats
+    let units = [];
+    if (data.pollingUnits && Array.isArray(data.pollingUnits)) {
+      units = data.pollingUnits;
+    } else if (data.data && Array.isArray(data.data)) {
+      units = data.data;
+    } else if (Array.isArray(data)) {
+      units = data;
+    }
+    
+    return units.map((unit: any) => ({
+      id: unit.id,
+      name: unit.name || unit.pollingUnitName || 'Unknown',
+    }));
+  } catch (error) {
+    console.error('❌ Error searching polling units:', error);
+    return [];
+  }
+};
+
+
+/**
+ * Search wards with server-side filtering
+ */
+export const searchWards = async (search: string): Promise<PollingUnitOption[]> => {
+  try {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      console.warn('No auth token found');
+      return [];
+    }
+
+    const params = new URLSearchParams();
+    params.append('limit', '50');
+    if (search && search.length >= 2) {
+      params.append('search', search);
+    }
+    
+    const url = `${API_BASE_URL}/admin/system/wards?${params.toString()}`;
+    console.log('📤 Searching wards:', url);
+    
+    const response = await fetch(url, {
+      headers: withTenantHeaders({
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      })
+    });
+
+    if (!response.ok) {
+      console.error('❌ Wards API Error:', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+    console.log('📥 Search wards response:', data);
+    
+    let items = [];
+    if (data.data && Array.isArray(data.data)) {
+      items = data.data;
+    } else if (data.wards && Array.isArray(data.wards)) {
+      items = data.wards;
+    } else if (Array.isArray(data)) {
+      items = data;
+    }
+    
+    return items.map((item: any) => ({
+      id: item.id,
+      name: item.name,
+    }));
+  } catch (error) {
+    console.error('❌ Error searching wards:', error);
+    return [];
+  }
+};
+/**
+ * Search zones with server-side filtering
+ */
+export const searchZones = async (search: string): Promise<PollingUnitOption[]> => {
+  try {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      console.warn('No auth token found');
+      return [];
+    }
+
+    const params = new URLSearchParams();
+    params.append('limit', '50');
+    if (search && search.length >= 2) {
+      params.append('search', search);
+    }
+    
+    const url = `${API_BASE_URL}/admin/system/zones?${params.toString()}`;
+    console.log('📤 Searching zones:', url);
+    
+    const response = await fetch(url, {
+      headers: withTenantHeaders({
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ API Error Response:', errorText);
+      throw new Error(`HTTP error ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('📥 Search zones response:', data);
+    
+    let items = [];
+    if (data.data && Array.isArray(data.data)) {
+      items = data.data;
+    } else if (data.zones && Array.isArray(data.zones)) {
+      items = data.zones;
+    } else if (Array.isArray(data)) {
+      items = data;
+    }
+    
+    return items.map((item: any) => ({
+      id: item.id,
+      name: item.name,
+    }));
+  } catch (error) {
+    console.error('❌ Error searching zones:', error);
+    return [];
+  }
+};
+// ============================================
+// ORIGINAL API FUNCTIONS
+// ============================================
 
 export const pollingUnitsApi = {
   /**
@@ -416,5 +598,8 @@ export const usePollingUnitsApi = () => {
     deletePollingUnit: pollingUnitsApi.deletePollingUnit,
     assignAgent: pollingUnitsApi.assignAgent,
     getPollingUnitsPaginated: pollingUnitsApi.getPollingUnitsPaginated,
+    searchPollingUnits,
+    searchWards,
+    searchZones,
   };
 };

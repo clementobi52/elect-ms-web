@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/use-toast';
+import { API_BASE_URL } from '@/lib/config';
 
 interface Agent {
   id: string;
@@ -64,7 +65,6 @@ export function useAgents(options?: {
   const [error, setError] = useState<string | null>(null);
   const [usingDemoData, setUsingDemoData] = useState(false);
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
   const fetchAgents = useCallback(async (showToastMessage = false) => {
     if (!user) return;

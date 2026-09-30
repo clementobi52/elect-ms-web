@@ -2,6 +2,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/use-toast';
+import { withTenantHeaders } from '@/lib/tenant';
+import { API_BASE_URL } from '@/lib/config';
 
 export interface PollingUnit {
   id: string;
@@ -86,7 +88,6 @@ const DEMO_POLLING_UNITS: PollingUnit[] = [
   }
 ];
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
 export function usePollingUnits(options?: {
   autoRefresh?: boolean;
@@ -134,7 +135,7 @@ export function usePollingUnits(options?: {
         console.log('System Admin fetching all polling units from:', url);
         
         response = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: withTenantHeaders({ Authorization: `Bearer ${token}` })
         });
 
         if (response.ok) {
@@ -192,7 +193,7 @@ export function usePollingUnits(options?: {
         console.log('Situation Room fetching polling units from:', url);
         
         response = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: withTenantHeaders({ Authorization: `Bearer ${token}` })
         });
 
         if (response.ok) {
@@ -236,7 +237,7 @@ export function usePollingUnits(options?: {
         console.log('Zone Admin fetching polling units from:', url);
         
         response = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: withTenantHeaders({ Authorization: `Bearer ${token}` })
         });
 
         if (response.ok) {
@@ -280,7 +281,7 @@ export function usePollingUnits(options?: {
         console.log('Ward Admin fetching polling units from:', url);
         
         response = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: withTenantHeaders({ Authorization: `Bearer ${token}` })
         });
 
         if (response.ok) {

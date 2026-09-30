@@ -101,13 +101,15 @@ const navItems: NavItem[] = [
     children: [
       {
         title: 'Wards',
-        getHref: (role) => role === 'System Admin' ? '/admin/wards' : `${getRoleBasePath(role)}/wards`,
+        // ✅ FIXED: System Admin goes to /admin/system/wards
+        getHref: (role) => role === 'System Admin' ? '/admin/system/wards' : `${getRoleBasePath(role)}/wards`,
         icon: <Building2 className="h-5 w-5" />,
         roles: ['Zone Admin', 'Situation Room Admin', 'System Admin'],
       },
       {
         title: 'Zones',
-        getHref: (role) => role === 'System Admin' ? '/admin/zones' : `${getRoleBasePath(role)}/zones`,
+        // ✅ FIXED: System Admin goes to /admin/system/zones
+        getHref: (role) => role === 'System Admin' ? '/admin/system/zones' : `${getRoleBasePath(role)}/zones`,
         icon: <Map className="h-5 w-5" />,
         roles: ['Situation Room Admin', 'System Admin'],
       },
@@ -123,19 +125,19 @@ const navItems: NavItem[] = [
     children: [
       {
         title: 'Live Monitoring',
-        getHref: (role) => role === 'System Admin' ? '/admin/live' : `${getRoleBasePath(role)}/live`,
+        getHref: (role) => role === 'System Admin' ? '/admin/system/live' : `${getRoleBasePath(role)}/live`,
         icon: <Eye className="h-5 w-5" />,
         roles: ['Situation Room Admin', 'System Admin'],
       },
       {
         title: 'Analytics',
-        getHref: (role) => role === 'System Admin' ? '/admin/analytics' : `${getRoleBasePath(role)}/analytics`,
+        getHref: (role) => role === 'System Admin' ? '/admin/system/analytics' : `${getRoleBasePath(role)}/analytics`,
         icon: <BarChart3 className="h-5 w-5" />,
         roles: ['Zone Admin', 'Situation Room Admin', 'System Admin'],
       },
       {
         title: 'Reports',
-        getHref: (role) => role === 'System Admin' ? '/admin/reports' : `${getRoleBasePath(role)}/reports`,
+        getHref: (role) => role === 'System Admin' ? '/admin/system/reports' : `${getRoleBasePath(role)}/reports`,
         icon: <ClipboardList className="h-5 w-5" />,
         roles: ['Zone Admin', 'Situation Room Admin', 'System Admin'],
       },
@@ -157,13 +159,13 @@ const navItems: NavItem[] = [
       },
       {
         title: 'User Management',
-        getHref: () => '/admin/users',
+        getHref: () => '/admin/system/users',
         icon: <Users className="h-5 w-5" />,
         roles: ['System Admin'],
       },
       {
         title: 'System Settings',
-        getHref: () => '/admin/settings',
+        getHref: () => '/admin/system/settings',
         icon: <Settings className="h-5 w-5" />,
         roles: ['System Admin'],
       },

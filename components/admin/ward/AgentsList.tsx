@@ -12,6 +12,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/components/ui/use-toast';
 import { Users, Search, RefreshCw, AlertCircle, Mail } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { withTenantHeaders } from '@/lib/tenant';
+import { API_BASE_URL } from '@/lib/config';
 
 interface Agent {
   id: string;
@@ -35,7 +37,6 @@ export default function AgentsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
   useEffect(() => {
     fetchAgents();
@@ -73,10 +74,10 @@ export default function AgentsPage() {
       console.log('📡 Fetching agents from:', url);
       
       const response = await fetch(url, {
-        headers: { 
+        headers: withTenantHeaders({ 
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
-        }
+        })
       });
 
       console.log('📡 Response status:', response.status);

@@ -5,6 +5,12 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Role, ROLES } from './types';
+import { getTenantSlug, setTenantSlug, withTenantHeaders } from './tenant';
+import { API_BASE_URL, DEFAULT_TENANT_SLUG } from '@/lib/config';
+
+// Fallback for a visitor with nothing stored yet. The server has its own
+// default, but sending it explicitly means the very first login resolves the
+// same tenant the user will get on every later request.
 
 interface User {
   role: Role;
@@ -29,7 +35,6 @@ interface AuthContextType extends AuthState {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001/api';
 const TOKEN_EXPIRY_BUFFER = 5 * 60 * 1000;
 
 // Helper to decode token payload
@@ -232,7 +237,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('refreshToken');
     sessionStorage.removeItem('authToken');
     sessionStorage.removeItem('refreshToken');
-    
+    // Drop the tenant with the session, so the next person to sign in on this
+    // browser starts from a clean slate instead of inheriting the last slug.
+    setTenantSlug(null);
+
     if (tokenCheckInterval.current) {
       clearInterval(tokenCheckInterval.current);
       tokenCheckInterval.current = null;
@@ -268,9 +276,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
         method: 'POST',
-        headers: {
+        headers: withTenantHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify({ refreshToken: refreshTokenStr }),
       });
 
@@ -288,6 +296,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (data.refreshToken) {
           localStorage.setItem('refreshToken', data.refreshToken);
         }
+        // Keep the stored slug in step with what the server says this session
+        // is, so the next request and the socket handshake agree with it.
+        setTenantSlug(data.tenant?.slug);
 
         setAuthState(prev => ({
           ...prev,
@@ -345,11 +356,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('🔐 Signing in...');
     
     try {
+      // Login is the first request, so the slug has to come from wherever the
+      // user is: a tenant subdomain if the hostname names one, else the stored
+      // value, else NEXT_PUBLIC_DEFAULT_TENANT for a first-time visitor on a
+      // hostname that names nothing. Without it the server cannot resolve a
+      // tenant and refuses the login.
+      //
+      // getTenantSlug() already prefers the hostname over storage, so a visitor
+      // on acme.elect-ms.com signs in as "acme" and never as the default - the
+      // server trusts the header ahead of the host, so a default here would win
+      // over the subdomain and resolve the wrong organisation.
+      const tenantSlug = getTenantSlug() || DEFAULT_TENANT_SLUG;
+
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: withTenantHeaders({ 'Content-Type': 'application/json' }, tenantSlug),
         body: JSON.stringify({ email, password }),
       });
 
@@ -359,7 +380,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const data = await response.json();
-      const { token, user, refreshToken: newRefreshToken } = data;
+      const { token, user, tenant, refreshToken: newRefreshToken } = data;
 
       console.log(`✅ Sign in successful for ${user.email} (${user.role})`);
 
@@ -368,6 +389,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (newRefreshToken) {
         localStorage.setItem('refreshToken', newRefreshToken);
       }
+      // Adopt the tenant the server resolved, not the one we guessed. If we
+      // sent a slug that was wrong we would never have reached this line.
+      setTenantSlug(tenant?.slug);
 
       setAuthState({
         user,
@@ -406,28 +430,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     window.fetch = async function(...args) {
       const [url, options = {}] = args;
-      
-      // Skip auth endpoints, public endpoints, and health checks
-      if (typeof url === 'string' && (url.includes('/auth/') || url.includes('/public/') || url.includes('/health'))) {
-        return originalFetch(...args);
-      }
 
       // Skip if not an API call
       if (typeof url !== 'string' || !url.includes('/api/')) {
         return originalFetch(...args);
       }
 
+      // The tenant goes on every API request, including the auth and public
+      // ones that the token logic below skips. The server refuses a request
+      // that cannot name its tenant (400), so a skip here is a broken request,
+      // not a harmless optimisation.
+      const tenantOptions: RequestInit = {
+        ...options,
+        headers: withTenantHeaders(options.headers),
+      };
+
+      // Auth handling is skipped for these; the tenant header above still rides
+      // along. /auth/login and /auth/refresh resolve the tenant the same way
+      // every other route does, so they need it too.
+      if (url.includes('/auth/') || url.includes('/public/') || url.includes('/health')) {
+        return originalFetch(url, tenantOptions);
+      }
+
       // Skip if on login page
       if (typeof window !== 'undefined' && window.location?.pathname?.includes('/login')) {
-        return originalFetch(...args);
+        return originalFetch(url, tenantOptions);
       }
 
       try {
         const token = localStorage.getItem('authToken');
         
-        // If no token, proceed without auth header
+        // If no token, proceed without auth header - but still named tenant.
         if (!token) {
-          return originalFetch(...args);
+          return originalFetch(url, tenantOptions);
         }
 
         // Check if token is expired
@@ -440,9 +475,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (refreshed) {
               const newToken = localStorage.getItem('authToken');
               if (newToken) {
-                const headers = new Headers(options.headers || {});
+                const headers = new Headers(tenantOptions.headers);
                 headers.set('Authorization', `Bearer ${newToken}`);
-                const newOptions = { ...options, headers };
+                const newOptions = { ...tenantOptions, headers };
                 return originalFetch(url, newOptions);
               }
             }
@@ -456,12 +491,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         // Add auth header and make request
-        const headers = new Headers(options.headers || {});
+        const headers = new Headers(tenantOptions.headers);
         if (!headers.has('Authorization')) {
           headers.set('Authorization', `Bearer ${token}`);
         }
         
-        const newOptions = { ...options, headers };
+        const newOptions = { ...tenantOptions, headers };
         const response = await originalFetch(url, newOptions);
         
         // Handle 401 Unauthorized - try refresh
@@ -473,9 +508,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (refreshed) {
               const newToken = localStorage.getItem('authToken');
               if (newToken) {
-                const retryHeaders = new Headers(options.headers || {});
+                const retryHeaders = new Headers(tenantOptions.headers);
                 retryHeaders.set('Authorization', `Bearer ${newToken}`);
-                const retryOptions = { ...options, headers: retryHeaders };
+                const retryOptions = { ...tenantOptions, headers: retryHeaders };
                 // Retry the request with new token
                 const retryResponse = await originalFetch(url, retryOptions);
                 return retryResponse;
@@ -495,7 +530,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Don't throw for network errors - let the caller handle it
         if (error instanceof TypeError && error.message === 'Failed to fetch') {
           console.warn('⚠️ Network error, returning original fetch');
-          return originalFetch(...args);
+          return originalFetch(url, tenantOptions);
         }
         throw error;
       }

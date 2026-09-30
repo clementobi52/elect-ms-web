@@ -20,6 +20,8 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
 import { Zone } from '../types';
+import { withTenantHeaders } from '@/lib/tenant';
+import { API_BASE_URL } from '@/lib/config';
 
 interface CreateWardDialogProps {
   open: boolean;
@@ -28,7 +30,6 @@ interface CreateWardDialogProps {
   onSuccess: () => void;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
 export const CreateWardDialog: React.FC<CreateWardDialogProps> = ({
   open,
@@ -51,10 +52,10 @@ export const CreateWardDialog: React.FC<CreateWardDialogProps> = ({
       const token = localStorage.getItem('authToken');
       const response = await fetch(`${API_BASE_URL}/admin/wards`, {
         method: 'POST',
-        headers: {
+        headers: withTenantHeaders({
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify(formData),
       });
 

@@ -57,6 +57,8 @@ import { useAuth } from '@/lib/auth-context';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
 import { Progress } from '@/components/ui/progress';
+import { withTenantHeaders } from '@/lib/tenant';
+import { API_BASE_URL } from '@/lib/config';
 
 interface Result {
   id: string;
@@ -107,7 +109,6 @@ export default function WardResultsPage() {
     totalVotes: 0,
   });
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
   // Fetch results
   const fetchResults = useCallback(async (showLoading = true) => {
@@ -126,10 +127,10 @@ export default function WardResultsPage() {
 
       // Fetch all results for this ward
       const response = await fetch(`${API_BASE_URL}/admin/ward/${wardId}/results`, {
-        headers: {
+        headers: withTenantHeaders({
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
-        }
+        })
       });
 
       if (!response.ok) {
@@ -154,10 +155,10 @@ export default function WardResultsPage() {
 
       // Also fetch ward name
       const wardResponse = await fetch(`${API_BASE_URL}/admin/wards/${wardId}`, {
-        headers: {
+        headers: withTenantHeaders({
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
-        }
+        })
       });
 
       if (wardResponse.ok) {
@@ -199,10 +200,10 @@ export default function WardResultsPage() {
       
       const response = await fetch(`${API_BASE_URL}/admin/results/${selectedResult.id}/approve`, {
         method: 'POST',
-        headers: {
+        headers: withTenantHeaders({
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
-        },
+        }),
         body: JSON.stringify({ comment: reviewComment }),
       });
 
@@ -240,10 +241,10 @@ export default function WardResultsPage() {
       
       const response = await fetch(`${API_BASE_URL}/admin/results/${selectedResult.id}/reject`, {
         method: 'POST',
-        headers: {
+        headers: withTenantHeaders({
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
-        },
+        }),
         body: JSON.stringify({ comment: reviewComment }),
       });
 

@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import AdminHeader from '@/components/admin/AdminHeader';
 import { MessagingWidget } from '@/components/admin/MessagingWidget';
+import { withTenantHeaders } from '@/lib/tenant';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -63,6 +64,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/auth-context';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
+import { API_BASE_URL } from '@/lib/config';
 
 interface WardStats {
   totalAgents: number;
@@ -131,7 +133,6 @@ export default function WardDetailsPage() {
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [selectedContactName, setSelectedContactName] = useState<string>('');
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
   // Fetch ward details
   const fetchWardDetails = useCallback(async (showLoading = true) => {
@@ -148,10 +149,10 @@ export default function WardDetailsPage() {
         throw new Error('No authentication token found');
       }
 
-      const headers = {
+      const headers = withTenantHeaders({
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
-      };
+      });
 
       // Fetch ward details
       const wardResponse = await fetch(`${API_BASE_URL}/admin/wards/${wardId}`, { headers });

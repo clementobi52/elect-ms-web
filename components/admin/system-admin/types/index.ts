@@ -1,11 +1,22 @@
 // components/admin/system-admin/types/index.ts
 
-import { 
-  Zone, 
-  Ward, 
-  PollingUnit, 
-  User, 
-  State, 
+import type {
+  LGA,
+  PollingUnit,
+  StandardWard,
+  State,
+  User,
+  Ward,
+  Zone,
+} from '@/lib/types';
+
+// ==================== Re-export from lib/types ====================
+export type {
+  Zone,
+  Ward,
+  PollingUnit,
+  User,
+  State,
   LGA,
   StandardWard,
   Party,
@@ -16,14 +27,19 @@ import {
   Report,
   DashboardStats,
   Role,
+} from '@/lib/types';
+
+export {
   ROLES,
   PERMISSIONS,
   hasPermission,
   getRoleDisplayName,
   getRoleBadgeColor,
   getSeverityColor,
-  getStatusColor
+  getStatusColor,
 } from '@/lib/types';
+
+// ==================== System Admin Specific Types ====================
 
 export interface SystemStats {
   totalUsers: number;
@@ -81,28 +97,34 @@ export interface UpdateUserFormData {
   zoneId?: string;
 }
 
-// Re-export all types from lib
-export {
-  Zone,
-  Ward,
-  PollingUnit,
-  User,
-  State,
-  LGA,
-  StandardWard,
-  Party,
-  ElectionResult,
-  IncidentReport,
-  VoteCount,
-  Agent,
-  Report,
-  DashboardStats,
-  Role,
-  ROLES,
-  PERMISSIONS,
-  hasPermission,
-  getRoleDisplayName,
-  getRoleBadgeColor,
-  getSeverityColor,
-  getStatusColor
-};
+// ==================== Additional Types ====================
+
+export interface UserWithRelations extends User {
+  pollingUnit?: PollingUnit;
+  ward?: Ward;
+  zone?: Zone;
+}
+
+export interface PollingUnitWithRelations extends Omit<PollingUnit, 'agent' | 'state' | 'lga'> {
+  ward?: WardWithRelations;
+  state?: State | null;
+  lga?: LGA | null;
+  standardWard?: StandardWard;
+  agent?: User | null;
+}
+
+export interface WardWithRelations extends Ward {
+  zone?: Zone;
+  pollingUnits?: PollingUnit[];
+}
+
+export interface ZoneWithRelations extends Zone {
+  wards?: WardWithRelations[];
+}
+
+export interface ApiResponse<T = any> {
+  success: boolean;
+  message: string;
+  data: T;
+  pagination?: Pagination;
+}

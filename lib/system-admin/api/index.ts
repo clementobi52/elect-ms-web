@@ -1,8 +1,9 @@
 // lib/system-admin/api.ts
 
 import { Ward, Pagination } from '@/components/admin/system-admin/types';
+import { withTenantHeaders } from '@/lib/tenant';
+import { API_BASE_URL } from '@/lib/config';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
 // Helper to get auth headers
 const getHeaders = () => {
@@ -31,19 +32,22 @@ export const fetchAllData = async (API_BASE_URL: string) => {
     throw new Error('No authentication token found');
   }
 
-  // Fetch all data in parallel
-  const [zonesRes, usersRes, statsRes, pollingUnitsRes] = await Promise.all([
-    fetch(`${API_BASE_URL}/admin/system/zones`, {
-      headers: { 'Authorization': `Bearer ${token}` }
+  // ✅ Fetch all data in parallel
+  const [zonesRes, wardsRes, usersRes, pollingUnitsRes, statsRes] = await Promise.all([
+    fetch(`${API_BASE_URL}/admin/system/zones?limit=1000`, {
+      headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
     }),
-    fetch(`${API_BASE_URL}/admin/system/users`, {
-      headers: { 'Authorization': `Bearer ${token}` }
+    fetch(`${API_BASE_URL}/admin/system/wards?limit=1000`, {
+      headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
+    }),
+    fetch(`${API_BASE_URL}/admin/system/users?limit=1000`, {
+      headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
+    }),
+    fetch(`${API_BASE_URL}/admin/polling-units?limit=1000`, {
+      headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
     }),
     fetch(`${API_BASE_URL}/admin/system/system/stats`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    }),
-    fetch(`${API_BASE_URL}/admin/system/polling-units?limit=1000`, {
-      headers: { 'Authorization': `Bearer ${token}` }
+      headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
     })
   ]);
 
@@ -52,26 +56,20 @@ export const fetchAllData = async (API_BASE_URL: string) => {
   let pollingUnits = [];
   let users = [];
   let stats = {};
-  let pollingUnitPagination = { page: 1, limit: 10, total: 0, totalPages: 0 };
 
   if (zonesRes.ok) {
     const zonesData = await zonesRes.json();
     zones = zonesData.zones || zonesData.data || [];
-    
-    // Extract wards from zones
-    const allWards: any[] = [];
-    for (const zone of zones) {
-      if (zone.wards) {
-        allWards.push(...zone.wards);
-      }
-    }
-    wards = allWards;
+  }
+
+  if (wardsRes.ok) {
+    const wardsData = await wardsRes.json();
+    wards = wardsData.wards || wardsData.data || [];
   }
 
   if (pollingUnitsRes.ok) {
     const puData = await pollingUnitsRes.json();
-    pollingUnits = puData.data || [];
-    pollingUnitPagination = puData.pagination || { page: 1, limit: 10, total: 0, totalPages: 0 };
+    pollingUnits = puData.pollingUnits || puData.data || [];
   }
 
   if (usersRes.ok) {
@@ -81,18 +79,31 @@ export const fetchAllData = async (API_BASE_URL: string) => {
 
   if (statsRes.ok) {
     const statsData = await statsRes.json();
-    stats = statsData.stats || statsData;
+    stats = statsData.stats || statsData || {};
+    
+    // ✅ Ensure we have all the stats fields
+    if (!stats.totalResults) {
+      const resultsCount = pollingUnits.filter((pu: any) => pu.resultStatus).length;
+      const verifiedCount = pollingUnits.filter((pu: any) => pu.resultStatus === 'Verified').length;
+      const pendingCount = pollingUnits.filter((pu: any) => pu.resultStatus === 'Pending').length;
+      const rejectedCount = pollingUnits.filter((pu: any) => pu.resultStatus === 'Rejected').length;
+      
+      stats.totalResults = resultsCount;
+      stats.verifiedResults = verifiedCount;
+      stats.pendingResults = pendingCount;
+      stats.rejectedResults = rejectedCount;
+    }
   }
 
-  return { zones, wards, pollingUnits, users, stats, pollingUnitPagination };
+  return { zones, wards, pollingUnits, users, stats };
 };
 
 // ==================== ZONES ====================
 
 export const fetchZonesPaginated = async (API_BASE_URL: string, page: number) => {
   const token = localStorage.getItem('authToken');
-  const response = await fetch(`${API_BASE_URL}/admin/system/zones/paginated?page=${page - 1}&limit=10`, {
-    headers: { 'Authorization': `Bearer ${token}` }
+  const response = await fetch(`${API_BASE_URL}/admin/system/zones/paginated?page=${page}&limit=10`, {
+    headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
   });
   
   if (response.ok) {
@@ -105,10 +116,10 @@ export const createZone = async (API_BASE_URL: string, name: string) => {
   const token = localStorage.getItem('authToken');
   const response = await fetch(`${API_BASE_URL}/admin/system/zones`, {
     method: 'POST',
-    headers: {
+    headers: withTenantHeaders({
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
-    },
+    }),
     body: JSON.stringify({ name })
   });
   return handleResponse(response);
@@ -118,10 +129,10 @@ export const updateZone = async (API_BASE_URL: string, id: string, name: string)
   const token = localStorage.getItem('authToken');
   const response = await fetch(`${API_BASE_URL}/admin/system/zones/${id}`, {
     method: 'PUT',
-    headers: {
+    headers: withTenantHeaders({
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
-    },
+    }),
     body: JSON.stringify({ name })
   });
   return handleResponse(response);
@@ -131,16 +142,13 @@ export const deleteZone = async (API_BASE_URL: string, id: string) => {
   const token = localStorage.getItem('authToken');
   const response = await fetch(`${API_BASE_URL}/admin/system/zones/${id}`, {
     method: 'DELETE',
-    headers: { 'Authorization': `Bearer ${token}` }
+    headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
   });
   return handleResponse(response);
 };
 
 // ==================== WARDS ====================
 
-
-
-// ✅ FIXED: Fetch wards with pagination
 export const fetchWardsPaginated = async (
   API_BASE_URL: string,
   page: number = 1,
@@ -168,10 +176,10 @@ export const fetchWardsPaginated = async (
 
     const response = await fetch(url, {
       method: 'GET',
-      headers: {
+      headers: withTenantHeaders({
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
-      },
+      }),
     });
 
     console.log('📡 Response status:', response.status);
@@ -196,7 +204,6 @@ export const fetchWardsPaginated = async (
       page: result.pagination?.page || 1
     });
 
-    // Handle different response structures
     let data = [];
     let pagination = { page: 1, limit: 10, total: 0, totalPages: 0 };
 
@@ -217,22 +224,18 @@ export const fetchWardsPaginated = async (
     };
   } catch (error) {
     console.error('Error fetching wards:', error);
-    // Return empty data instead of throwing to prevent UI crashes
     return { data: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } };
   }
 };
-
-
-
 
 export const updateWard = async (API_BASE_URL: string, id: string, name: string) => {
   const token = localStorage.getItem('authToken');
   const response = await fetch(`${API_BASE_URL}/admin/system/wards/${id}`, {
     method: 'PUT',
-    headers: {
+    headers: withTenantHeaders({
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
-    },
+    }),
     body: JSON.stringify({ name })
   });
   return handleResponse(response);
@@ -242,7 +245,7 @@ export const deleteWard = async (API_BASE_URL: string, id: string) => {
   const token = localStorage.getItem('authToken');
   const response = await fetch(`${API_BASE_URL}/admin/system/wards/${id}`, {
     method: 'DELETE',
-    headers: { 'Authorization': `Bearer ${token}` }
+    headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
   });
   return handleResponse(response);
 };
@@ -250,7 +253,7 @@ export const deleteWard = async (API_BASE_URL: string, id: string) => {
 export const fetchWardsInZone = async (API_BASE_URL: string, zoneId: string) => {
   const token = localStorage.getItem('authToken');
   const response = await fetch(`${API_BASE_URL}/admin/system/zones/${zoneId}/wards`, {
-    headers: { 'Authorization': `Bearer ${token}` }
+    headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
   });
   
   if (response.ok) {
@@ -263,27 +266,16 @@ export const createWard = async (API_BASE_URL: string, data: { name: string; zon
   const token = localStorage.getItem('authToken');
   const response = await fetch(`${API_BASE_URL}/admin/system/wards`, {
     method: 'POST',
-    headers: {
+    headers: withTenantHeaders({
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
-    },
+    }),
     body: JSON.stringify(data)
   });
   return handleResponse(response);
 };
 
-
-
-
-
 // ==================== POLLING UNITS ====================
-// lib/system-admin/api/index.ts
-
-
-/**
- * Fetch polling units with pagination and filters
- */
-
 
 export const fetchPollingUnits = async (
   baseUrl: string,
@@ -309,28 +301,39 @@ export const fetchPollingUnits = async (
       params.append('wardId', filters.wardId);
     }
     
-    if (filters.search) {
-      params.append('search', filters.search);
+    if (filters.search && filters.search.trim()) {
+      params.append('search', filters.search.trim());
     }
     
     if (filters.unassigned) {
       params.append('unassigned', 'true');
     }
 
+    if (filters.hasAgent && filters.hasAgent !== 'all') {
+      params.append('hasAgent', filters.hasAgent);
+    }
+
+    if (filters.hasResults && filters.hasResults !== 'all') {
+      params.append('hasResults', filters.hasResults);
+    }
+
+    if (filters.status && filters.status !== 'all') {
+      params.append('status', filters.status);
+    }
+
     const url = `${baseUrl}/admin/polling-units?${params.toString()}`;
     console.log('📤 API Request URL:', url);
 
-    // ✅ Add timeout to fetch
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
 
     const response = await fetch(url, {
       method: 'GET',
-      headers: {
+      headers: withTenantHeaders({
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-      },
+      }),
       signal: controller.signal
     });
 
@@ -342,7 +345,6 @@ export const fetchPollingUnits = async (
         const errorData = await response.json();
         errorMessage = errorData.message || errorData.error || errorMessage;
       } catch (e) {
-        // If response is not JSON, use status text
         errorMessage = response.statusText || errorMessage;
       }
       throw new Error(errorMessage);
@@ -351,27 +353,27 @@ export const fetchPollingUnits = async (
     const data = await response.json();
     console.log('📥 API Response:', {
       success: data.success,
-      pollingUnitsCount: data.pollingUnits?.length || 0,
+      pollingUnitsCount: data.pollingUnits?.length || data.data?.length || 0,
       total: data.pagination?.total || 0,
     });
 
     return {
-      data: data.pollingUnits || [],
+      success: data.success || true,
+      data: data.pollingUnits || data.data || [],
       pagination: data.pagination || { 
         page: page, 
         limit: filters.limit || 50, 
-        total: 0, 
-        totalPages: 0 
+        total: data.pollingUnits?.length || data.data?.length || 0, 
+        totalPages: 1 
       },
+      stats: data.stats || {},
       filters: data.filters || {},
-      success: data.success
     };
   } catch (error) {
     console.error('❌ API Error in fetchPollingUnits:', error);
     
-    // ✅ Better error message for timeout/connection issues
     if (error.name === 'AbortError') {
-      throw new Error('Request timed out. Please try again.');
+      throw new Error('Request timed out. The server is taking too long to respond. Please try again with fewer filters.');
     }
     if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
       throw new Error('Network error. Please check your connection.');
@@ -380,9 +382,6 @@ export const fetchPollingUnits = async (
   }
 };
 
-/**
- * Fetch unassigned polling units
- */
 export const fetchUnassignedPollingUnits = async (
   baseUrl: string,
   page: number = 1
@@ -403,11 +402,11 @@ export const fetchUnassignedPollingUnits = async (
 
     const response = await fetch(url, {
       method: 'GET',
-      headers: {
+      headers: withTenantHeaders({
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-      },
+      }),
     });
 
     if (!response.ok) {
@@ -423,7 +422,7 @@ export const fetchUnassignedPollingUnits = async (
     });
 
     return {
-      data: data.pollingUnits || [],
+      data: data.pollingUnits || data.data || [],
       pagination: data.pagination || { 
         page: page, 
         limit: 50, 
@@ -441,12 +440,12 @@ export const fetchUnassignedPollingUnits = async (
 
 export const createPollingUnit = async (API_BASE_URL: string, data: any) => {
   const token = localStorage.getItem('authToken');
-  const response = await fetch(`${API_BASE_URL}/admin/system/polling-units`, {
+  const response = await fetch(`${API_BASE_URL}/admin/polling-units`, {
     method: 'POST',
-    headers: {
+    headers: withTenantHeaders({
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
-    },
+    }),
     body: JSON.stringify(data)
   });
   return handleResponse(response);
@@ -454,12 +453,12 @@ export const createPollingUnit = async (API_BASE_URL: string, data: any) => {
 
 export const updatePollingUnit = async (API_BASE_URL: string, id: string, data: any) => {
   const token = localStorage.getItem('authToken');
-  const response = await fetch(`${API_BASE_URL}/admin/system/polling-units/${id}`, {
+  const response = await fetch(`${API_BASE_URL}/admin/polling-units/${id}`, {
     method: 'PUT',
-    headers: {
+    headers: withTenantHeaders({
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
-    },
+    }),
     body: JSON.stringify(data)
   });
   return handleResponse(response);
@@ -467,21 +466,21 @@ export const updatePollingUnit = async (API_BASE_URL: string, id: string, data: 
 
 export const deletePollingUnit = async (API_BASE_URL: string, id: string) => {
   const token = localStorage.getItem('authToken');
-  const response = await fetch(`${API_BASE_URL}/admin/system/polling-units/${id}`, {
+  const response = await fetch(`${API_BASE_URL}/admin/polling-units/${id}`, {
     method: 'DELETE',
-    headers: { 'Authorization': `Bearer ${token}` }
+    headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
   });
   return handleResponse(response);
 };
 
 export const bulkImportPollingUnits = async (API_BASE_URL: string, pollingUnits: any[]) => {
   const token = localStorage.getItem('authToken');
-  const response = await fetch(`${API_BASE_URL}/admin/system/polling-units/bulk-import`, {
+  const response = await fetch(`${API_BASE_URL}/admin/polling-units/bulk-import`, {
     method: 'POST',
-    headers: {
+    headers: withTenantHeaders({
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
-    },
+    }),
     body: JSON.stringify({ pollingUnits })
   });
   return handleResponse(response);
@@ -493,10 +492,10 @@ export const createUser = async (API_BASE_URL: string, userData: any) => {
   const token = localStorage.getItem('authToken');
   const response = await fetch(`${API_BASE_URL}/admin/system/create-user`, {
     method: 'POST',
-    headers: {
+    headers: withTenantHeaders({
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
-    },
+    }),
     body: JSON.stringify(userData)
   });
   return handleResponse(response);
@@ -506,10 +505,10 @@ export const updateUser = async (API_BASE_URL: string, id: string, userData: any
   const token = localStorage.getItem('authToken');
   const response = await fetch(`${API_BASE_URL}/admin/system/users/${id}`, {
     method: 'PUT',
-    headers: {
+    headers: withTenantHeaders({
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
-    },
+    }),
     body: JSON.stringify(userData)
   });
   return handleResponse(response);
@@ -519,9 +518,218 @@ export const deleteUser = async (API_BASE_URL: string, id: string) => {
   const token = localStorage.getItem('authToken');
   const response = await fetch(`${API_BASE_URL}/admin/system/users/${id}`, {
     method: 'DELETE',
-    headers: { 'Authorization': `Bearer ${token}` }
+    headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
   });
   return handleResponse(response);
+};
+
+// ==================== AGENTS ====================
+
+/**
+ * Fetch all agents with stats
+ */
+export const fetchAgents = async (
+  baseUrl: string,
+  page: number = 1,
+  filters: any = {}
+): Promise<any> => {
+  try {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+
+    const params = new URLSearchParams();
+    params.append('page', page.toString());
+    params.append('limit', (filters.limit || 50).toString());
+    
+    if (filters.search && filters.search.trim()) {
+      params.append('search', filters.search.trim());
+    }
+    if (filters.status && filters.status !== 'all') {
+      params.append('status', filters.status);
+    }
+    if (filters.zoneId && filters.zoneId !== 'all') {
+      params.append('zoneId', filters.zoneId);
+    }
+    if (filters.wardId && filters.wardId !== 'all') {
+      params.append('wardId', filters.wardId);
+    }
+    if (filters.hasIncidents && filters.hasIncidents !== 'all') {
+      params.append('hasIncidents', filters.hasIncidents);
+    }
+    if (filters.hasResults && filters.hasResults !== 'all') {
+      params.append('hasResults', filters.hasResults);
+    }
+    if (filters.sortBy && filters.sortBy !== 'name') {
+      params.append('sortBy', filters.sortBy);
+    }
+
+    const url = `${baseUrl}/admin/system/agents?${params.toString()}`;
+    console.log('📤 API Request URL (agents):', url);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: withTenantHeaders({
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Failed to fetch agents: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('📥 API Response (agents):', {
+      success: data.success,
+      agentsCount: data.agents?.length || 0,
+      total: data.pagination?.total || 0,
+      stats: data.stats,
+    });
+
+    return {
+      success: data.success || true,
+      data: data.agents || [],
+      pagination: data.pagination || { 
+        page: page, 
+        limit: filters.limit || 50, 
+        total: 0, 
+        totalPages: 0 
+      },
+      stats: data.stats || {
+        total: 0,
+        active: 0,
+        inactive: 0,
+        pending: 0,
+        withIncidents: 0,
+        withResults: 0,
+        online: 0,
+        offline: 0,
+      },
+      filters: data.filters || {},
+    };
+  } catch (error) {
+    console.error('❌ API Error in fetchAgents:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get agent by ID
+ */
+export const fetchAgentById = async (baseUrl: string, id: string): Promise<any> => {
+  try {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+
+    const url = `${baseUrl}/admin/system/agents/${id}`;
+    console.log('📤 API Request URL (agent by ID):', url);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: withTenantHeaders({
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Failed to fetch agent: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return {
+      success: data.success || true,
+      data: data.data || data.agent || null,
+    };
+  } catch (error) {
+    console.error('❌ API Error in fetchAgentById:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update agent
+ */
+export const updateAgent = async (baseUrl: string, id: string, agentData: any): Promise<any> => {
+  try {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+
+    const url = `${baseUrl}/admin/system/agents/${id}`;
+    console.log('📤 API Request URL (update agent):', url);
+
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: withTenantHeaders({
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      }),
+      body: JSON.stringify(agentData),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Failed to update agent: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return {
+      success: data.success || true,
+      data: data.data || data.agent || null,
+    };
+  } catch (error) {
+    console.error('❌ API Error in updateAgent:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete agent
+ */
+export const deleteAgent = async (baseUrl: string, id: string): Promise<any> => {
+  try {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+
+    const url = `${baseUrl}/admin/system/agents/${id}`;
+    console.log('📤 API Request URL (delete agent):', url);
+
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: withTenantHeaders({
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Failed to delete agent: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return {
+      success: data.success || true,
+      message: data.message || 'Agent deleted successfully',
+    };
+  } catch (error) {
+    console.error('❌ API Error in deleteAgent:', error);
+    throw error;
+  }
 };
 
 // ==================== PARTIES ====================
@@ -536,7 +744,7 @@ export interface PartyData {
 export const fetchParties = async (API_BASE_URL: string) => {
   const token = localStorage.getItem('authToken');
   const response = await fetch(`${API_BASE_URL}/parties`, {
-    headers: { 'Authorization': `Bearer ${token}` }
+    headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
   });
   
   if (response.ok) {
@@ -550,10 +758,10 @@ export const createParty = async (API_BASE_URL: string, data: PartyData) => {
   const token = localStorage.getItem('authToken');
   const response = await fetch(`${API_BASE_URL}/parties/add`, {
     method: 'POST',
-    headers: {
+    headers: withTenantHeaders({
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
-    },
+    }),
     body: JSON.stringify(data),
   });
 
@@ -568,10 +776,10 @@ export const updateParty = async (API_BASE_URL: string, id: string, data: PartyD
   const token = localStorage.getItem('authToken');
   const response = await fetch(`${API_BASE_URL}/parties/${id}`, {
     method: 'PUT',
-    headers: {
+    headers: withTenantHeaders({
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
-    },
+    }),
     body: JSON.stringify(data),
   });
 
@@ -586,7 +794,7 @@ export const deleteParty = async (API_BASE_URL: string, id: string) => {
   const token = localStorage.getItem('authToken');
   const response = await fetch(`${API_BASE_URL}/parties/${id}`, {
     method: 'DELETE',
-    headers: { 'Authorization': `Bearer ${token}` }
+    headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
   });
 
   if (!response.ok) {
@@ -594,6 +802,167 @@ export const deleteParty = async (API_BASE_URL: string, id: string) => {
     throw new Error(error.message || 'Failed to delete party');
   }
   return response.json();
+};
+
+// ==================== SYSTEM STATS ====================
+
+/**
+ * Fetch system stats
+ */
+export const fetchSystemStats = async (API_BASE_URL: string) => {
+  const token = localStorage.getItem('authToken');
+  const response = await fetch(`${API_BASE_URL}/admin/system/system/stats`, {
+    headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
+  });
+  
+  if (response.ok) {
+    return await response.json();
+  }
+  return { stats: {} };
+};
+
+/**
+ * Fetch polling unit statistics
+ */
+export const fetchPollingUnitStats = async (baseUrl: string): Promise<any> => {
+  try {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+
+    const url = `${baseUrl}/admin/system/polling-units/stats`;
+    console.log('📤 Fetching polling unit stats from:', url);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: withTenantHeaders({
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Failed to fetch stats: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('📥 Stats Response:', data);
+
+    return {
+      success: data.success || false,
+      stats: data.stats || {
+        total: 0,
+        withAgents: 0,
+        withoutAgents: 0,
+        withResults: 0,
+        withoutResults: 0,
+        verifiedResults: 0,
+        pendingResults: 0,
+        rejectedResults: 0,
+      },
+      cached: data.cached || false
+    };
+  } catch (error) {
+    console.error('❌ Error fetching polling unit stats:', error);
+    return {
+      success: false,
+      stats: {
+        total: 0,
+        withAgents: 0,
+        withoutAgents: 0,
+        withResults: 0,
+        withoutResults: 0,
+        verifiedResults: 0,
+        pendingResults: 0,
+        rejectedResults: 0,
+      },
+      error: error.message
+    };
+  }
+};
+
+/**
+ * Fetch complete polling unit stats including agents and results
+ */
+export const fetchCompletePollingUnitStats = async (baseUrl: string): Promise<{
+  total: number;
+  withAgents: number;
+  withoutAgents: number;
+  withResults: number;
+  withoutResults: number;
+  verifiedResults: number;
+  pendingResults: number;
+  rejectedResults: number;
+}> => {
+  try {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+
+    const [statsRes, agentsRes, resultsRes] = await Promise.all([
+      fetch(`${baseUrl}/admin/system/polling-units/stats`, {
+        headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
+      }),
+      fetch(`${baseUrl}/admin/system/users?role=Polling Agent&limit=1`, {
+        headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
+      }),
+      fetch(`${baseUrl}/admin/system/election-results/stats`, {
+        headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
+      }).catch(() => ({ ok: false }))
+    ]);
+
+    let total = 0;
+    if (statsRes.ok) {
+      const statsData = await statsRes.json();
+      total = statsData.stats?.total || 0;
+    }
+
+    let withAgents = 0;
+    if (agentsRes.ok) {
+      const agentsData = await agentsRes.json();
+      withAgents = agentsData.users?.filter((u: any) => u.pollingUnitId).length || 0;
+    }
+
+    let verifiedResults = 0;
+    let pendingResults = 0;
+    let rejectedResults = 0;
+    let withResults = 0;
+
+    if (resultsRes.ok) {
+      const resultsData = await resultsRes.json();
+      verifiedResults = resultsData.stats?.verified || 0;
+      pendingResults = resultsData.stats?.pending || 0;
+      rejectedResults = resultsData.stats?.rejected || 0;
+      withResults = verifiedResults + pendingResults + rejectedResults;
+    }
+
+    return {
+      total,
+      withAgents,
+      withoutAgents: total - withAgents,
+      withResults,
+      withoutResults: total - withResults,
+      verifiedResults,
+      pendingResults,
+      rejectedResults,
+    };
+  } catch (error) {
+    console.error('❌ Error fetching complete polling unit stats:', error);
+    return {
+      total: 0,
+      withAgents: 0,
+      withoutAgents: 0,
+      withResults: 0,
+      withoutResults: 0,
+      verifiedResults: 0,
+      pendingResults: 0,
+      rejectedResults: 0,
+    };
+  }
 };
 
 // ==================== SYSTEM LOGS ====================
@@ -619,7 +988,7 @@ export const fetchSystemLogs = async (API_BASE_URL: string, page: number, filter
   }
   
   const response = await fetch(url, {
-    headers: { 'Authorization': `Bearer ${token}` }
+    headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
   });
   
   if (response.ok) {
@@ -656,3 +1025,6 @@ export const exportLogs = (logs: any[]) => {
   a.click();
   window.URL.revokeObjectURL(url);
 };
+
+// ==================== EXPORTS ====================
+

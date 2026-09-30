@@ -4,6 +4,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/use-toast';
+import { withTenantHeaders } from '@/lib/tenant';
+import { API_BASE_URL } from '@/lib/config';
 
 export interface VoteSummary {
   party: string;
@@ -28,7 +30,6 @@ const DEMO_VOTE_SUMMARIES: VoteSummary[] = [
   { party: 'NNPP', votes: 7520, percentage: 7, color: 'bg-purple-500' },
 ];
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
 // Party color mapping (fallback if backend doesn't provide colors)
 const PARTY_COLORS: Record<string, string> = {
@@ -83,10 +84,10 @@ export function useVoteSummary(options?: {
       console.log('🔍 Fetching vote summary from:', url);
 
       const response = await fetch(url, {
-        headers: { 
+        headers: withTenantHeaders({ 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
-        }
+        })
       });
 
       if (response.ok) {

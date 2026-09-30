@@ -11,15 +11,12 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelectServer } from '@/components/ui/searchable-select-server';
 import { useToast } from '@/components/ui/use-toast';
+import { searchWards } from '@/lib/api/pollingUnits';
 import { Ward } from '../types';
+import { withTenantHeaders } from '@/lib/tenant';
+import { API_BASE_URL } from '@/lib/config';
 
 interface CreatePollingUnitDialogProps {
   open: boolean;
@@ -28,7 +25,6 @@ interface CreatePollingUnitDialogProps {
   onSuccess: () => void;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
 export const CreatePollingUnitDialog: React.FC<CreatePollingUnitDialogProps> = ({
   open,
@@ -51,12 +47,12 @@ export const CreatePollingUnitDialog: React.FC<CreatePollingUnitDialogProps> = (
 
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${API_BASE_URL}/admin/polling-units`, {
+      const response = await fetch(`${API_BASE_URL}/admin/system/polling-units`, {
         method: 'POST',
-        headers: {
+        headers: withTenantHeaders({
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify({
           name: formData.name,
           wardId: formData.wardId,
@@ -71,7 +67,7 @@ export const CreatePollingUnitDialog: React.FC<CreatePollingUnitDialogProps> = (
       }
 
       toast({
-        title: 'Success',
+        title: '✅ Success',
         description: 'Polling unit created successfully',
       });
 
@@ -91,15 +87,16 @@ export const CreatePollingUnitDialog: React.FC<CreatePollingUnitDialogProps> = (
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New Polling Unit</DialogTitle>
           <DialogDescription>Add a new polling unit to the system</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
+            {/* Polling Unit Name */}
             <div className="space-y-2">
-              <Label htmlFor="name">Polling Unit Name</Label>
+              <Label htmlFor="name">Polling Unit Name *</Label>
               <Input
                 id="name"
                 value={formData.name}
@@ -108,27 +105,27 @@ export const CreatePollingUnitDialog: React.FC<CreatePollingUnitDialogProps> = (
                 required
               />
             </div>
+
+            {/* Ward Selection with Search */}
             <div className="space-y-2">
-              <Label htmlFor="ward">Ward</Label>
-              <Select
+              <Label>Ward *</Label>
+              <SearchableSelectServer
                 value={formData.wardId}
-                onValueChange={(value) => setFormData({ ...formData, wardId: value })}
-                required
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select ward" />
-                </SelectTrigger>
-                <SelectContent>
-                  {wards.map((ward) => (
-                    <SelectItem key={ward.id} value={ward.id}>
-                      {ward.name} {ward.zone ? `(${ward.zone.name})` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                onChange={(value) => setFormData({ ...formData, wardId: value })}
+                fetchOptions={searchWards}
+                placeholder="Search and select ward..."
+                searchPlaceholder="Search by ward name..."
+                emptyMessage="No wards found"
+                initialOptions={wards.slice(0, 20)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Type at least 2 characters to search among {wards.length.toLocaleString()} wards
+              </p>
             </div>
+
+            {/* Latitude */}
             <div className="space-y-2">
-              <Label htmlFor="latitude">Latitude</Label>
+              <Label htmlFor="latitude">Latitude *</Label>
               <Input
                 id="latitude"
                 type="number"
@@ -139,8 +136,10 @@ export const CreatePollingUnitDialog: React.FC<CreatePollingUnitDialogProps> = (
                 required
               />
             </div>
+
+            {/* Longitude */}
             <div className="space-y-2">
-              <Label htmlFor="longitude">Longitude</Label>
+              <Label htmlFor="longitude">Longitude *</Label>
               <Input
                 id="longitude"
                 type="number"
@@ -152,6 +151,7 @@ export const CreatePollingUnitDialog: React.FC<CreatePollingUnitDialogProps> = (
               />
             </div>
           </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)} type="button">
               Cancel

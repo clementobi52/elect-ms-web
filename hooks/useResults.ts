@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/use-toast';
+import { withTenantHeaders } from '@/lib/tenant';
+import { API_BASE_URL } from '@/lib/config';
 
 export interface ElectionResult {
   id: string;
@@ -112,7 +114,6 @@ const DEMO_RESULTS: ElectionResult[] = [
   }
 ];
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
 // Enhanced helper function to extract image URL from various possible fields
 const extractImageUrl = (item: any): string | null | undefined => {
@@ -299,7 +300,7 @@ export function useResults(options?: {
         console.log('System Admin fetching all results from:', url);
         
         response = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: withTenantHeaders({ Authorization: `Bearer ${token}` })
         });
 
         if (response.ok) {
@@ -341,7 +342,7 @@ export function useResults(options?: {
         console.log('Situation Room fetching results from:', url);
         
         response = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: withTenantHeaders({ Authorization: `Bearer ${token}` })
         });
 
         if (response.ok) {
@@ -369,7 +370,7 @@ export function useResults(options?: {
         console.log('Zone Admin fetching results from:', url);
         
         response = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: withTenantHeaders({ Authorization: `Bearer ${token}` })
         });
 
         if (response.ok) {
@@ -397,7 +398,7 @@ export function useResults(options?: {
         console.log('Ward Admin fetching results from:', url);
         
         response = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: withTenantHeaders({ Authorization: `Bearer ${token}` })
         });
 
         if (response.ok) {
@@ -480,10 +481,10 @@ export function useResults(options?: {
       
       const response = await fetch(`${API_BASE_URL}/admin/results/${resultId}/approve`, {
         method: 'POST',
-        headers: {
+        headers: withTenantHeaders({
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
-        },
+        }),
         body: JSON.stringify({ comment }),
       });
 
@@ -523,10 +524,10 @@ export function useResults(options?: {
       
       const response = await fetch(`${API_BASE_URL}/admin/results/${resultId}/reject`, {
         method: 'POST',
-        headers: {
+        headers: withTenantHeaders({
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
-        },
+        }),
         body: JSON.stringify({ comment }),
       });
 

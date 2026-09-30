@@ -12,6 +12,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Send, X, Minimize2, Maximize2, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
+import { withTenantHeaders } from '@/lib/tenant';
+import { API_BASE_URL } from '@/lib/config';
 
 interface Message {
   id: string;
@@ -63,13 +65,12 @@ export function AgentMessaging({ agent, onClose, getInitials }: AgentMessagingPr
   const loadMessageHistory = async () => {
     try {
       const token = localStorage.getItem('authToken');
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
       
       const response = await fetch(`${API_BASE_URL}/admin/messages/history?agentId=${agent.id}`, {
-        headers: {
+        headers: withTenantHeaders({
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
-        }
+        })
       });
 
       if (response.ok) {

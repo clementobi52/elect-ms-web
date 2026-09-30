@@ -36,7 +36,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Plus, MoreVertical, Eye, Edit, Trash2, Search } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { withTenantHeaders } from '@/lib/tenant';
 import { Party } from '../types';
+import { API_BASE_URL } from '@/lib/config';
 
 interface PartiesTabProps {
   parties: Party[];
@@ -46,7 +48,6 @@ interface PartiesTabProps {
   setSearchQuery: (query: string) => void;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
 export const PartiesTab: React.FC<PartiesTabProps> = ({
   parties,
@@ -76,10 +77,10 @@ export const PartiesTab: React.FC<PartiesTabProps> = ({
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem('authToken');
-    return {
+    return withTenantHeaders({
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
-    };
+    });
   };
 
   const handleCreate = async (e: React.FormEvent) => {

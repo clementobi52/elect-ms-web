@@ -54,6 +54,8 @@ import { useAuth } from '@/lib/auth-context';
 import { apiClient } from '@/lib/api/client';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
+import { withTenantHeaders } from '@/lib/tenant';
+import { API_BASE_URL } from '@/lib/config';
 
 interface Incident {
   id: string;
@@ -97,7 +99,6 @@ export default function WardIncidentsPage() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [wardName, setWardName] = useState<string>('');
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
   // Fetch incidents
   const fetchIncidents = useCallback(async (showLoading = true) => {
@@ -116,10 +117,10 @@ export default function WardIncidentsPage() {
 
       // Fetch incidents for this ward
       const response = await fetch(`${API_BASE_URL}/admin/ward/${wardId}/incidents`, {
-        headers: {
+        headers: withTenantHeaders({
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
-        }
+        })
       });
 
       if (!response.ok) {
@@ -131,10 +132,10 @@ export default function WardIncidentsPage() {
 
       // Also fetch ward name
       const wardResponse = await fetch(`${API_BASE_URL}/admin/wards/${wardId}`, {
-        headers: {
+        headers: withTenantHeaders({
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
-        }
+        })
       });
 
       if (wardResponse.ok) {
@@ -177,10 +178,10 @@ export default function WardIncidentsPage() {
       
       const response = await fetch(`${API_BASE_URL}/admin/incidents/${selectedIncident.id}/status`, {
         method: 'PATCH',
-        headers: {
+        headers: withTenantHeaders({
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
-        },
+        }),
         body: JSON.stringify({
           status: updateStatus,
           reviewComment: updateComment

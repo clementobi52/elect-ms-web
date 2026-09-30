@@ -98,6 +98,8 @@ export function IncidentsTab({
   useEffect(() => {
     if (incidents.length > 0) {
       console.log('📊 Incidents data structure:', incidents[0]);
+      console.log('📊 Incident pollingUnitName type:', typeof incidents[0]?.pollingUnitName);
+      console.log('📊 Incident pollingUnitName value:', incidents[0]?.pollingUnitName);
     }
   }, [incidents]);
 
@@ -110,8 +112,6 @@ export function IncidentsTab({
         : await incidentsApi.getIncidents();
       
       if (response.success && response.incidents) {
-        // API incident type may differ from local Incident type (missing required polling_unit).
-        // Assert to the expected type to satisfy state setter. Ensure downstream code handles potential undefined fields.
         setIncidents(response.incidents as unknown as Incident[]);
       } else {
         setIncidents([]);
@@ -158,7 +158,6 @@ export function IncidentsTab({
           throw new Error(response.message || 'Failed to update incident');
         }
         
-        // Update the incident in the local list
         if (response.incident) {
           const updatedIncident: Incident = {
             ...selectedIncident,
@@ -186,7 +185,6 @@ export function IncidentsTab({
       setUpdateComment('');
       setSelectedIncident(null);
       
-      // Refresh the list
       await handleRefresh();
     } catch (error) {
       console.error('❌ Error updating incident:', error);
@@ -222,19 +220,67 @@ export function IncidentsTab({
     }
   }, []);
 
-  // Helper functions
+  // ✅ FIXED: Get polling unit name safely
   const getPollingUnitName = useCallback((incident: Incident): string => {
-    return incident.pollingUnitName || 
-           incident.pollingUnit || 
-           incident.polling_unit || 
-           'Unknown';
+    // Try different possible field names
+    if (incident.pollingUnitName && typeof incident.pollingUnitName === 'string') {
+      return incident.pollingUnitName;
+    }
+    if (incident.pollingUnit && typeof incident.pollingUnit === 'string') {
+      return incident.pollingUnit;
+    }
+    if (incident.polling_unit && typeof incident.polling_unit === 'string') {
+      return incident.polling_unit;
+    }
+    // If it's an object, try to extract name
+    if (incident.pollingUnitName && typeof incident.pollingUnitName === 'object') {
+      // @ts-ignore - it might have a name property
+      if (incident.pollingUnitName.name && typeof incident.pollingUnitName.name === 'string') {
+        // @ts-ignore
+        return incident.pollingUnitName.name;
+      }
+      // @ts-ignore
+      if (incident.pollingUnitName.pollingUnitName && typeof incident.pollingUnitName.pollingUnitName === 'string') {
+        // @ts-ignore
+        return incident.pollingUnitName.pollingUnitName;
+      }
+    }
+    if (incident.pollingUnit && typeof incident.pollingUnit === 'object') {
+      // @ts-ignore
+      if (incident.pollingUnit.name && typeof incident.pollingUnit.name === 'string') {
+        // @ts-ignore
+        return incident.pollingUnit.name;
+      }
+    }
+    if (incident.polling_unit && typeof incident.polling_unit === 'object') {
+      // @ts-ignore
+      if (incident.polling_unit.name && typeof incident.polling_unit.name === 'string') {
+        // @ts-ignore
+        return incident.polling_unit.name;
+      }
+    }
+    return 'Unknown';
   }, []);
 
+  // ✅ FIXED: Get reporter name safely
   const getReporterName = useCallback((incident: Incident): string => {
-    return incident.reporterName || 
-           incident.reporter || 
-           incident.reported_by || 
-           'Unknown';
+    if (incident.reporterName && typeof incident.reporterName === 'string') {
+      return incident.reporterName;
+    }
+    if (incident.reporter && typeof incident.reporter === 'string') {
+      return incident.reporter;
+    }
+    if (incident.reported_by && typeof incident.reported_by === 'string') {
+      return incident.reported_by;
+    }
+    if (incident.reporter && typeof incident.reporter === 'object') {
+      // @ts-ignore
+      if (incident.reporter.name && typeof incident.reporter.name === 'string') {
+        // @ts-ignore
+        return incident.reporter.name;
+      }
+    }
+    return 'Unknown';
   }, []);
 
   const formatTime = useCallback((time: string) => {
@@ -251,10 +297,13 @@ export function IncidentsTab({
   // Filtered incidents
   const filteredIncidents = useMemo(() => {
     return incidents.filter(incident => {
+      const pollingUnitName = getPollingUnitName(incident);
+      const reporterName = getReporterName(incident);
+      
       const matchesSearch = 
         incident.type?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        getPollingUnitName(incident).toLowerCase().includes(searchTerm.toLowerCase()) ||
-        getReporterName(incident).toLowerCase().includes(searchTerm.toLowerCase());
+        pollingUnitName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        reporterName.toLowerCase().includes(searchTerm.toLowerCase());
       
       const matchesSeverity = filterSeverity === 'all' || 
         incident.severity?.toLowerCase() === filterSeverity.toLowerCase();

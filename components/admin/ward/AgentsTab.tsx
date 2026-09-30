@@ -1,6 +1,7 @@
+// components/admin/ward/AgentsTab.tsx
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Card,
   CardContent,
@@ -32,6 +33,8 @@ import {
   MessageSquare,
   MoreVertical,
   X,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { MessagingWidget } from "@/components/admin/MessagingWidget";
@@ -49,6 +52,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { getSocket } from "@/lib/socket-service";
+import { withTenantHeaders } from '@/lib/tenant';
+import { API_BASE_URL } from '@/lib/config';
 
 interface Agent {
   id: string;
@@ -85,64 +91,90 @@ export function AgentsTab({ wardId }: AgentsTabProps) {
   const [agentToReconcile, setAgentToReconcile] = useState<Agent | null>(null);
   const [showReconcileModal, setShowReconcileModal] = useState(false);
   const [showMessagingModal, setShowMessagingModal] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
 
-  // Add ref to track if component is mounted and if refresh is paused
-  const isMounted = useRef(true);
-  const refreshPaused = useRef(false);
-  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  const API_BASE_URL =
-    process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001/api";
   const targetWardId = wardId || user?.wardId;
+
+  // ✅ Listen for agent status updates from socket
+  useEffect(() => {
+    if (!targetWardId) return;
+
+    const socket = getSocket();
+
+    // ✅ Handler for ward data update
+    const handleWardDataUpdate = (data: any) => {
+      console.log('📢 AgentsTab: Socket ward-data-update received:', data);
+      if (data && data.agents) {
+        const processedAgents = data.agents.map((agent: any) => {
+          const isOnline = agent.status === 'Online' || agent.status === 'online';
+          return {
+            ...agent,
+            status: isOnline ? 'Online' : 'Offline',
+            lastActive: isOnline ? 'Just now' : agent.lastActive || 'Offline'
+          };
+        });
+        setAgents(processedAgents);
+        
+        // Show toast for status changes
+        const onlineAgents = processedAgents.filter((a: Agent) => a.status === 'Online');
+        const offlineAgents = processedAgents.filter((a: Agent) => a.status === 'Offline');
+        console.log(`📊 AgentsTab: ${onlineAgents.length} online, ${offlineAgents.length} offline`);
+      }
+    };
+
+    // ✅ Handler for individual agent status update
+    const handleAgentStatusUpdate = (data: any) => {
+      console.log('📢 AgentsTab: Socket agent-status-update received:', data);
+      if (data && data.agentId && data.status) {
+        setAgents(prev => 
+          prev.map(agent => 
+            agent.id === data.agentId 
+              ? { 
+                  ...agent, 
+                  status: data.status === 'Online' ? 'Online' : 'Offline',
+                  lastActive: data.status === 'Online' ? 'Just now' : agent.lastActive,
+                  updatedAt: data.timestamp || agent.updatedAt
+                } 
+              : agent
+          )
+        );
+        
+        // Show toast for status change
+        const agentName = agents.find(a => a.id === data.agentId)?.name || 'Agent';
+        toast({
+          title: `${agentName} is now ${data.status}`,
+          description: data.status === 'Online' ? 'Agent is online' : 'Agent is offline',
+          duration: 3000,
+          variant: data.status === 'Online' ? 'default' : 'destructive',
+        });
+      }
+    };
+
+    if (socket) {
+      socket.on('ward-data-update', handleWardDataUpdate);
+      socket.on('agent-status-update', handleAgentStatusUpdate);
+      
+      // Check connection status
+      setIsConnected(socket.connected);
+      
+      socket.on('connect', () => setIsConnected(true));
+      socket.on('disconnect', () => setIsConnected(false));
+    }
+
+    return () => {
+      if (socket) {
+        socket.off('ward-data-update', handleWardDataUpdate);
+        socket.off('agent-status-update', handleAgentStatusUpdate);
+      }
+    };
+  }, [targetWardId, toast]);
 
   // Pause refresh when typing in search
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
-    refreshPaused.current = true;
-
-    const timeout = setTimeout(() => {
-      refreshPaused.current = false;
-    }, 2000);
-
-    return () => clearTimeout(timeout);
   };
 
-  useEffect(() => {
-    isMounted.current = true;
-
-    if (targetWardId) {
-      fetchAgents();
-    }
-
-    return () => {
-      isMounted.current = false;
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-      }
-    };
-  }, [targetWardId]);
-
-  // Separate effect for setting up auto-refresh
-  useEffect(() => {
-    if (!targetWardId) return;
-
-    if (refreshIntervalRef.current) {
-      clearInterval(refreshIntervalRef.current);
-    }
-
-    refreshIntervalRef.current = setInterval(() => {
-      if (!refreshPaused.current && isMounted.current) {
-        fetchAgents(false);
-      }
-    }, 30000);
-
-    return () => {
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-      }
-    };
-  }, [targetWardId]);
-
+  // ✅ Fetch agents - now handles both initial load and refresh
   const fetchAgents = async (showToast = false) => {
     if (!targetWardId) {
       setError("No ward ID found");
@@ -168,10 +200,10 @@ export function AgentsTab({ wardId }: AgentsTabProps) {
       console.log("📡 Fetching agents from:", url);
 
       const response = await fetch(url, {
-        headers: {
+        headers: withTenantHeaders({
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
-        },
+        }),
       });
 
       if (!response.ok) {
@@ -219,11 +251,9 @@ export function AgentsTab({ wardId }: AgentsTabProps) {
         };
       });
 
-      if (isMounted.current) {
-        setAgents(processedAgents);
-      }
+      setAgents(processedAgents);
 
-      if (showToast && isMounted.current) {
+      if (showToast) {
         toast({
           title: "Success",
           description: `Loaded ${processedAgents.length} agents`,
@@ -231,26 +261,29 @@ export function AgentsTab({ wardId }: AgentsTabProps) {
       }
     } catch (error) {
       console.error("❌ Error fetching agents:", error);
-      if (isMounted.current) {
-        setError(
-          error instanceof Error ? error.message : "Failed to load agents",
-        );
-        if (showToast) {
-          toast({
-            title: "Error",
-            description:
-              error instanceof Error ? error.message : "Failed to load agents",
-            variant: "destructive",
-          });
-        }
+      setError(
+        error instanceof Error ? error.message : "Failed to load agents"
+      );
+      if (showToast) {
+        toast({
+          title: "Error",
+          description:
+            error instanceof Error ? error.message : "Failed to load agents",
+          variant: "destructive",
+        });
       }
     } finally {
-      if (isMounted.current) {
-        setLoading(false);
-        setRefreshing(false);
-      }
+      setLoading(false);
+      setRefreshing(false);
     }
   };
+
+  // Initial load
+  useEffect(() => {
+    if (targetWardId) {
+      fetchAgents();
+    }
+  }, [targetWardId]);
 
   const handleReconcileLocation = async (agent: Agent) => {
     if (!agent.lastKnownLocation) {
@@ -271,11 +304,11 @@ export function AgentsTab({ wardId }: AgentsTabProps) {
         `${API_BASE_URL}/admin/agents/${agent.id}/reconcile-location`,
         {
           method: "POST",
-          headers: {
+          headers: withTenantHeaders({
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
-          },
-        },
+          }),
+        }
       );
 
       if (!response.ok) {
@@ -328,7 +361,7 @@ export function AgentsTab({ wardId }: AgentsTabProps) {
     (agent) =>
       agent.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       agent.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      agent.pollingUnitName.toLowerCase().includes(searchTerm.toLowerCase()),
+      agent.pollingUnitName.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const onlineCount = agents.filter((a) => a.status === "Online").length;
@@ -357,27 +390,45 @@ export function AgentsTab({ wardId }: AgentsTabProps) {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Polling Agents</CardTitle>
+              <div className="flex items-center gap-2">
+                <CardTitle>Polling Agents</CardTitle>
+                <Badge
+                  variant={isConnected ? "default" : "secondary"}
+                  className={
+                    isConnected
+                      ? "bg-green-100 text-green-800"
+                      : "bg-yellow-100 text-yellow-800"
+                  }
+                >
+                  {isConnected ? (
+                    <Wifi className="h-3 w-3 mr-1" />
+                  ) : (
+                    <WifiOff className="h-3 w-3 mr-1" />
+                  )}
+                  {isConnected ? "Live" : "Polling"}
+                </Badge>
+              </div>
               <CardDescription>
                 Agents assigned to polling units in your ward
               </CardDescription>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => fetchAgents(true)}
-              disabled={refreshing}
-            >
-              <RefreshCw
-                className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`}
-              />
-              Refresh
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fetchAgents(true)}
+                disabled={refreshing}
+              >
+                <RefreshCw
+                  className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`}
+                />
+                Refresh
+              </Button>
+            </div>
           </div>
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {/* Error display */}
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-red-600" />
@@ -397,7 +448,7 @@ export function AgentsTab({ wardId }: AgentsTabProps) {
               />
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Badge variant="outline" className="px-3 py-1">
                 <Users className="h-3 w-3 mr-1" /> Total: {agents.length}
               </Badge>
@@ -474,7 +525,11 @@ export function AgentsTab({ wardId }: AgentsTabProps) {
                         }
                       >
                         <span
-                          className={`mr-1 h-2 w-2 rounded-full inline-block ${agent.status === "Online" ? "bg-green-600 animate-pulse" : "bg-gray-500"}`}
+                          className={`mr-1 h-2 w-2 rounded-full inline-block ${
+                            agent.status === "Online"
+                              ? "bg-green-600 animate-pulse"
+                              : "bg-gray-500"
+                          }`}
                         />
                         {agent.status}
                       </Badge>
@@ -605,19 +660,17 @@ export function AgentsTab({ wardId }: AgentsTabProps) {
         </DialogContent>
       </Dialog>
 
-      {/* ✅ Scrollable Messaging Modal */}
+      {/* Messaging Modal */}
       {showMessagingModal && selectedAgentForMessage && (
-        <div 
+        <div
           className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto"
           onClick={(e) => {
-            // Close modal when clicking on the backdrop (outside the modal content)
             if (e.target === e.currentTarget) {
               handleCloseMessaging();
             }
           }}
         >
           <div className="relative bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
-            {/* Modal Header with Close Button - Fixed at top */}
             <div className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0 bg-white">
               <div className="flex items-center gap-3 min-w-0">
                 <Avatar className="h-10 w-10 flex-shrink-0">
@@ -644,13 +697,15 @@ export function AgentsTab({ wardId }: AgentsTabProps) {
               </Button>
             </div>
 
-            {/* Scrollable Messaging Content */}
             <div className="flex-1 overflow-y-auto min-h-[400px] max-h-[calc(90vh-80px)]">
               <MessagingWidget
                 initialContactId={selectedAgentForMessage.id}
                 initialContactName={selectedAgentForMessage.name}
                 onSelectConversation={() => {
-                  console.log('Conversation selected with:', selectedAgentForMessage.name);
+                  console.log(
+                    "Conversation selected with:",
+                    selectedAgentForMessage.name
+                  );
                 }}
                 className="h-full border-0 rounded-none"
                 showHeader={false}

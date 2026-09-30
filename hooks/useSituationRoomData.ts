@@ -6,6 +6,8 @@ import { incidentsApi, hasValidCoordinates } from '@/lib/api/incidents';
 import { resultsApi } from '@/lib/api/results';
 import { reportsApi } from '@/lib/api/reports';
 import { AlertTriangle, FileText, Wifi, Activity } from 'lucide-react';
+import { withTenantHeaders } from '@/lib/tenant';
+import { API_BASE_URL } from '@/lib/config';
 
 export interface SituationRoomStats {
   totalZones: number;
@@ -329,7 +331,6 @@ export function useSituationRoomData(options?: {
       
       try {
         // ✅ Use the situation room endpoint for vote summary (not admin)
-        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
         const token = localStorage.getItem('authToken');
         
         if (token) {
@@ -344,10 +345,10 @@ export function useSituationRoomData(options?: {
           
           const response = await fetch(voteUrl, {
             method: 'GET',
-            headers: {
+            headers: withTenantHeaders({
               'Authorization': `Bearer ${token}`,
               'Content-Type': 'application/json',
-            },
+            }),
           });
 
           if (response.ok) {

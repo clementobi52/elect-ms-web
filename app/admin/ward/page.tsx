@@ -20,7 +20,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { io, Socket } from 'socket.io-client';
 
 // Import components
 import { StatsCards } from '@/components/admin/ward/StatsCards';
@@ -32,6 +31,9 @@ import { IncidentsTab } from '@/components/admin/ward/IncidentsTab';
 import { PartiesQuickRef } from '@/components/admin/ward/PartiesQuickRef';
 import { NotificationsPanel } from '@/components/admin/NotificationsPanel';
 
+// Import socket service
+import { getSocket, onConnectionChange, onSocketMessage, sendSocketMessage } from '@/lib/socket-service';
+
 // Import types
 import { 
   Party, 
@@ -42,6 +44,8 @@ import {
   Incident 
 } from '@/lib/types/ward-admin';
 import { ROLES } from '@/lib/types';
+import { withTenantHeaders } from '@/lib/tenant';
+import { API_BASE_URL } from '@/lib/config';
 
 // UUID validation
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -83,20 +87,20 @@ export default function WardAdminDashboard() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const [unsubscribeConnection, setUnsubscribeConnection] = useState<(() => void) | null>(null);
+  const [unsubscribeMessages, setUnsubscribeMessages] = useState<(() => void) | null>(null);
+  const [socketInitialized, setSocketInitialized] = useState(false);
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
-  const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5001';
 
   // Fetch unread message count
   const fetchUnreadCount = async () => {
     try {
       const token = localStorage.getItem('authToken');
       const response = await fetch(`${API_BASE_URL}/admin/messages/unread-count`, {
-        headers: {
+        headers: withTenantHeaders({
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
-        }
+        })
       });
       
       if (response.ok) {
@@ -120,10 +124,10 @@ export default function WardAdminDashboard() {
       }
       
       const response = await fetch(`${API_BASE_URL}/admin/zone/${zoneId}/admin`, {
-        headers: {
+        headers: withTenantHeaders({
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
-        }
+        })
       });
       
       if (response.ok) {
@@ -141,117 +145,97 @@ export default function WardAdminDashboard() {
     }
   };
 
-  // ✅ Socket.IO connection setup
-  const setupSocketIO = useCallback(() => {
-    const token = localStorage.getItem('authToken');
-    if (!token || !user?.wardId) return;
-
-    // Close existing connection
-    if (socket) {
-      socket.disconnect();
+  // ✅ Handle agent status update
+  const handleAgentStatusUpdate = useCallback((payload: any) => {
+    console.log('👤 Agent status update payload:', payload);
+    
+    if (!payload || typeof payload !== 'object') {
+      console.log('⚠️ Invalid agent status payload');
+      return;
     }
-
-    console.log('🔌 Connecting to Socket.IO...');
-
-    const newSocket = io(SOCKET_URL, {
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      auth: {
-        token: token
-      }
-    });
-
-    newSocket.on('connect', () => {
-      console.log('✅ Socket.IO connected');
-      setIsConnected(true);
-      
-      // Join ward room
-      newSocket.emit('join-ward', {
-        wardId: user.wardId,
-        userId: user.id,
-        role: user.role,
-        userName: user.name
+    
+    if (payload.online !== undefined && payload.offline !== undefined) {
+      console.log(`📊 Updating stats - Online: ${payload.online}, Offline: ${payload.offline}`);
+      setWardStats(prev => ({
+        ...prev,
+        activeAgents: payload.online,
+        offlineAgents: payload.offline
+      }));
+      return;
+    }
+    
+    if (payload.online !== undefined) {
+      setWardStats(prev => {
+        const total = prev.activeAgents + prev.offlineAgents;
+        const newOffline = total > payload.online ? total - payload.online : 0;
+        console.log(`📊 Updating stats - Online: ${payload.online}, Offline: ${newOffline}`);
+        return {
+          ...prev,
+          activeAgents: payload.online,
+          offlineAgents: newOffline
+        };
       });
+      return;
+    }
+    
+    if (payload.agentId && payload.status) {
+      const isOnline = payload.status === 'Online' || payload.status === 'online';
+      console.log(`📊 Agent ${payload.agentId} status changed to: ${isOnline ? 'Online' : 'Offline'}`);
       
-      // Request initial data
-      newSocket.emit('request-ward-data', {
-        wardId: user.wardId
+      setWardStats(prev => {
+        if (isOnline) {
+          return {
+            ...prev,
+            activeAgents: prev.activeAgents + 1,
+            offlineAgents: Math.max(0, prev.offlineAgents - 1)
+          };
+        } else {
+          return {
+            ...prev,
+            activeAgents: Math.max(0, prev.activeAgents - 1),
+            offlineAgents: prev.offlineAgents + 1
+          };
+        }
       });
-    });
+      return;
+    }
+    
+    if (payload.agentId && (payload.latitude !== undefined || payload.location)) {
+      console.log(`📍 Agent ${payload.agentId} location update - marking as Online`);
+      setWardStats(prev => ({
+        ...prev,
+        activeAgents: prev.activeAgents + 1,
+        offlineAgents: Math.max(0, prev.offlineAgents - 1)
+      }));
+      return;
+    }
+    
+    if (payload.agents && Array.isArray(payload.agents)) {
+      const online = payload.agents.filter((a: any) => 
+        a.status === 'Online' || a.status === 'online'
+      ).length;
+      const offline = payload.agents.filter((a: any) => 
+        a.status === 'Offline' || a.status === 'offline'
+      ).length;
+      
+      console.log(`📊 Full agent list update - Online: ${online}, Offline: ${offline}`);
+      setWardStats(prev => ({
+        ...prev,
+        activeAgents: online,
+        offlineAgents: offline
+      }));
+      return;
+    }
+    
+    console.log('⚠️ Unrecognized agent status payload format:', payload);
+  }, []);
 
-    newSocket.on('disconnect', () => {
-      console.log('🔌 Socket.IO disconnected');
-      setIsConnected(false);
-    });
-
-    newSocket.on('connect_error', (error) => {
-      console.error('❌ Socket.IO connection error:', error.message);
-      setIsConnected(false);
-    });
-
-    // ✅ Ward data update
-    newSocket.on('ward-data-update', (payload) => {
-      console.log('📊 Ward data update received:', payload);
-      handleWardDataUpdate(payload);
-    });
-
-    // ✅ New result
-    newSocket.on('new-result', (payload) => {
-      console.log('📄 New result submitted:', payload);
-      handleNewResult(payload);
-    });
-
-    // ✅ Result approved
-    newSocket.on('result-approved', (payload) => {
-      console.log('✅ Result approved:', payload);
-      handleResultApproved(payload);
-    });
-
-    // ✅ Result rejected
-    newSocket.on('result-rejected', (payload) => {
-      console.log('❌ Result rejected:', payload);
-      handleResultRejected(payload);
-    });
-
-    // ✅ New incident
-    newSocket.on('new-incident', (payload) => {
-      console.log('🚨 New incident:', payload);
-      handleNewIncident(payload);
-    });
-
-    // ✅ Incident updated
-    newSocket.on('incident-updated', (payload) => {
-      console.log('🔄 Incident updated:', payload);
-      handleIncidentUpdated(payload);
-    });
-
-    // ✅ Agent status update
-    newSocket.on('agent-status-update', (payload) => {
-      console.log('👤 Agent status update:', payload);
-      handleAgentStatusUpdate(payload);
-    });
-
-    // ✅ New message
-    newSocket.on('new-message', (payload) => {
-      console.log('📨 New message received:', payload);
-      handleNewMessage(payload);
-    });
-
-    // ✅ Joined ward confirmation
-    newSocket.on('joined-ward', (data) => {
-      console.log('✅ Successfully joined ward room:', data.wardId);
-    });
-
-    setSocket(newSocket);
-  }, [user?.wardId, user?.id, user?.role, user?.name]);
-
-  // ✅ Handle ward data update (batch update)
-  const handleWardDataUpdate = (payload: any) => {
+  // ✅ Handle ward data update
+  const handleWardDataUpdate = useCallback((payload: any) => {
     console.log('📊 Ward data update received:', payload);
     
     if (payload.stats) {
+      console.log('📊 Updating stats:', payload.stats);
       setWardStats(prev => ({
         ...prev,
         ...payload.stats
@@ -265,16 +249,66 @@ export default function WardAdminDashboard() {
     if (payload.pendingResults !== undefined) {
       setPendingResults(payload.pendingResults);
     }
+
+    if (payload.agents && Array.isArray(payload.agents)) {
+      console.log('👤 Updating agents data:', payload.agents.length, 'agents');
+      
+      const online = payload.agents.filter((a: any) => 
+        a.status === 'Online' || a.status === 'online'
+      ).length;
+      const offline = payload.agents.filter((a: any) => 
+        a.status === 'Offline' || a.status === 'offline'
+      ).length;
+      
+      console.log(`📊 Agent counts - Online: ${online}, Offline: ${offline}`);
+      
+      setWardStats(prev => ({
+        ...prev,
+        activeAgents: online,
+        offlineAgents: offline
+      }));
+      
+      setDashboardData(prev => {
+        if (!prev) return prev;
+        
+        const updatedPollingAgents = prev.pollingAgents?.map((agent: any) => {
+          const updatedAgent = payload.agents.find((a: any) => a.id === agent.id);
+          if (updatedAgent) {
+            return {
+              ...agent,
+              status: updatedAgent.status || agent.status,
+              updatedAt: updatedAgent.updatedAt || agent.updatedAt,
+              lastActive: updatedAgent.status === 'Online' ? 'Just now' : agent.lastActive
+            };
+          }
+          return agent;
+        }) || [];
+        
+        return {
+          ...prev,
+          pollingAgents: updatedPollingAgents
+        };
+      });
+      
+      const processedAgents = payload.agents.map((agent: any) => ({
+        ...agent,
+        status: agent.status === 'Online' ? 'Online' : 'Offline'
+      }));
+      
+      window.dispatchEvent(new CustomEvent('agents-updated', { 
+        detail: { agents: processedAgents } 
+      }));
+    }
     
     toast({
       title: "🔄 Dashboard Updated",
       description: "Real-time data has been refreshed.",
       duration: 3000,
     });
-  };
+  }, []);
 
   // ✅ Handle new result
-  const handleNewResult = (payload: any) => {
+  const handleNewResult = useCallback((payload: any) => {
     console.log('📄 New result submitted:', payload);
     
     setPendingResults(prev => {
@@ -293,10 +327,10 @@ export default function WardAdminDashboard() {
       description: `${payload.pollingUnitName || 'A polling unit'} has submitted results.`,
       duration: 5000,
     });
-  };
+  }, []);
 
   // ✅ Handle result approved
-  const handleResultApproved = (payload: any) => {
+  const handleResultApproved = useCallback((payload: any) => {
     console.log('✅ Result approved:', payload);
     
     setPendingResults(prev => prev.filter(r => r.id !== payload.resultId));
@@ -312,10 +346,10 @@ export default function WardAdminDashboard() {
       description: payload.message || "A result has been approved.",
       duration: 3000,
     });
-  };
+  }, []);
 
   // ✅ Handle result rejected
-  const handleResultRejected = (payload: any) => {
+  const handleResultRejected = useCallback((payload: any) => {
     console.log('❌ Result rejected:', payload);
     
     setPendingResults(prev => prev.filter(r => r.id !== payload.resultId));
@@ -332,13 +366,27 @@ export default function WardAdminDashboard() {
       duration: 3000,
       variant: "destructive",
     });
-  };
+  }, []);
 
   // ✅ Handle new incident
-  const handleNewIncident = (payload: any) => {
-    console.log('🚨 New incident:', payload);
+  const handleNewIncident = useCallback((payload: any) => {
+    console.log('🚨 New incident received:', payload);
     
-    setIncidents(prev => [payload, ...prev]);
+    const newIncident: Incident = {
+      id: payload.id || `inc-${Date.now()}`,
+      type: payload.type || 'Unknown',
+      severity: payload.severity || 'info',
+      status: payload.status || 'Reported',
+      description: payload.description || payload.message || '',
+      pollingUnit: payload.pollingUnit || 'Unknown',
+      reporter: payload.reporter || 'Unknown',
+      time: payload.timestamp ? new Date(payload.timestamp).toLocaleString() : 'Just now',
+      pollingUnitId: payload.pollingUnitId,
+      wardId: payload.wardId,
+      createdAt: payload.timestamp || new Date().toISOString(),
+    };
+    
+    setIncidents(prev => [newIncident, ...prev]);
     
     setWardStats(prev => ({
       ...prev,
@@ -350,38 +398,38 @@ export default function WardAdminDashboard() {
     
     toast({
       title: `🚨 ${payload.severity?.toUpperCase() || 'New'} Incident`,
-      description: payload.message || "A new incident has been reported.",
-      duration: 5000,
+      description: `${payload.type} reported at ${payload.pollingUnit || 'Unknown location'}`,
+      duration: 10000,
       variant: payload.severity === 'critical' ? 'destructive' : 'default',
     });
-  };
+  }, []);
 
   // ✅ Handle incident updated
-  const handleIncidentUpdated = (payload: any) => {
-    console.log('🔄 Incident updated:', payload);
+  const handleIncidentUpdated = useCallback((payload: any) => {
+    console.log('🔄 Incident updated received:', payload);
     
     setIncidents(prev => 
       prev.map(inc => 
-        inc.id === payload.id ? { ...inc, ...payload } : inc
+        inc.id === payload.incidentId 
+          ? { 
+              ...inc, 
+              status: payload.status || inc.status,
+              reviewComment: payload.comment || inc.reviewComment,
+              updatedAt: payload.timestamp || new Date().toISOString()
+            } 
+          : inc
       )
     );
-  };
-
-  // ✅ Handle agent status update
-  const handleAgentStatusUpdate = (payload: any) => {
-    console.log('👤 Agent status update:', payload);
     
-    if (payload.online !== undefined) {
-      setWardStats(prev => ({
-        ...prev,
-        activeAgents: payload.online,
-        offlineAgents: (prev.activeAgents + prev.offlineAgents) - payload.online
-      }));
-    }
-  };
+    toast({
+      title: "🔄 Incident Updated",
+      description: `Status changed to ${payload.status}`,
+      duration: 3000,
+    });
+  }, []);
 
   // ✅ Handle new message
-  const handleNewMessage = (payload: any) => {
+  const handleNewMessage = useCallback((payload: any) => {
     console.log('📨 New message received:', payload);
     setUnreadMessageCount(prev => prev + 1);
     
@@ -390,7 +438,216 @@ export default function WardAdminDashboard() {
       description: payload.message?.substring(0, 50) + (payload.message?.length > 50 ? '...' : ''),
       duration: 5000,
     });
-  };
+  }, []);
+
+  // ✅ Setup Socket.IO using the shared service
+  const setupSocketListeners = useCallback(() => {
+    if (socketInitialized) return;
+    
+    const socket = getSocket();
+    
+    const unsubConnection = onConnectionChange((connected) => {
+      console.log(`🔌 Socket connection status: ${connected}`);
+      setIsConnected(connected);
+      
+      if (connected && user?.wardId) {
+        sendSocketMessage('join-ward', {
+          wardId: user.wardId,
+          userId: user.id,
+          role: user.role,
+          userName: user.name
+        });
+        
+        sendSocketMessage('request-ward-data', {
+          wardId: user.wardId
+        });
+        
+        // ✅ Request incidents when connected
+        sendSocketMessage('request-incidents', {
+          wardId: user.wardId,
+          userId: user.id
+        });
+      }
+    });
+
+    const unsubMessages = onSocketMessage((event, data) => {
+      console.log(`📨 Handling socket event: ${event}`, data);
+      
+      switch (event) {
+        case 'ward-data-update':
+          handleWardDataUpdate(data);
+          break;
+          
+        case 'agent-status-update':
+          handleAgentStatusUpdate(data);
+          break;
+          
+        case 'agent-location-update':
+          console.log('📍 Agent location update received:', data);
+          if (data && data.agentId) {
+            handleAgentStatusUpdate({
+              agentId: data.agentId,
+              status: 'Online',
+              timestamp: new Date().toISOString()
+            });
+          }
+          break;
+          
+        case 'agent-location-alert':
+          console.log('📍 Agent location alert received:', data);
+          if (data && data.agentId) {
+            handleAgentStatusUpdate({
+              agentId: data.agentId,
+              status: 'Online',
+              timestamp: new Date().toISOString()
+            });
+          }
+          break;
+          
+        case 'agent-status-change':
+          console.log('👤 Agent status change received:', data);
+          handleAgentStatusUpdate(data);
+          break;
+          
+        case 'agent-list-update':
+          console.log('👤 Agent list update received:', data);
+          if (data && data.agents) {
+            const online = data.agents.filter((a: any) => 
+              a.status === 'Online' || a.status === 'online'
+            ).length;
+            const offline = data.agents.filter((a: any) => 
+              a.status === 'Offline' || a.status === 'offline'
+            ).length;
+            
+            setWardStats(prev => ({
+              ...prev,
+              activeAgents: online,
+              offlineAgents: offline
+            }));
+            
+            window.dispatchEvent(new CustomEvent('agents-updated', { 
+              detail: { agents: data.agents } 
+            }));
+          }
+          break;
+          
+        case 'new-result':
+          handleNewResult(data);
+          break;
+          
+        case 'result-approved':
+          handleResultApproved(data);
+          break;
+          
+        case 'result-rejected':
+          handleResultRejected(data);
+          break;
+          
+        // ✅ Incident events
+        case 'new-incident':
+          handleNewIncident(data);
+          break;
+          
+        case 'incident-updated':
+          handleIncidentUpdated(data);
+          break;
+          
+        case 'incidents-data':
+          if (data && data.incidents) {
+            console.log(`📋 Received ${data.incidents.length} incidents`);
+            setIncidents(data.incidents);
+          }
+          break;
+          
+        case 'incidents-update':
+          if (data && data.incidents) {
+            console.log(`📋 Received bulk incident update: ${data.incidents.length} incidents`);
+            setIncidents(data.incidents);
+          }
+          break;
+          
+        case 'ward-incident-update':
+          console.log('📋 Ward incident update received:', data);
+          setIncidents(prev => {
+            const existing = prev.findIndex(inc => inc.id === data.incidentId);
+            if (existing >= 0) {
+              const updated = [...prev];
+              updated[existing] = { 
+                ...updated[existing], 
+                ...data,
+                status: data.status || updated[existing].status
+              };
+              return updated;
+            }
+            const newIncident: Incident = {
+              id: data.incidentId || `inc-${Date.now()}`,
+              type: data.type || 'Unknown',
+              severity: data.severity || 'info',
+              status: data.status || 'Reported',
+              description: data.description || '',
+              pollingUnit: data.pollingUnit || 'Unknown',
+              reporter: data.reporter || 'Unknown',
+              time: data.timestamp ? new Date(data.timestamp).toLocaleString() : 'Just now',
+              pollingUnitId: data.pollingUnitId,
+              wardId: data.wardId,
+              createdAt: data.timestamp || new Date().toISOString(),
+            };
+            return [newIncident, ...prev];
+          });
+          break;
+          
+        case 'notification':
+          if (data.type === 'incident') {
+            toast({
+              title: data.message || 'New Notification',
+              description: data.data?.description || '',
+              duration: 5000,
+              variant: data.severity === 'critical' ? 'destructive' : 'default',
+            });
+          }
+          break;
+          
+        case 'new-message':
+          handleNewMessage(data);
+          break;
+          
+        case 'joined-ward':
+          console.log('✅ Successfully joined ward room:', data?.wardId);
+          break;
+          
+        default:
+          break;
+      }
+    });
+
+    setUnsubscribeConnection(() => unsubConnection);
+    setUnsubscribeMessages(() => unsubMessages);
+    setSocketInitialized(true);
+
+    if (socket && socket.connected) {
+      setIsConnected(true);
+      if (user?.wardId) {
+        sendSocketMessage('join-ward', {
+          wardId: user.wardId,
+          userId: user.id,
+          role: user.role,
+          userName: user.name
+        });
+        
+        // ✅ Request incidents on initial connection
+        sendSocketMessage('request-incidents', {
+          wardId: user.wardId,
+          userId: user.id
+        });
+      }
+    }
+
+    return () => {
+      if (unsubConnection) unsubConnection();
+      if (unsubMessages) unsubMessages();
+      setSocketInitialized(false);
+    };
+  }, [user, handleWardDataUpdate, handleAgentStatusUpdate, handleNewResult, handleResultApproved, handleResultRejected, handleNewIncident, handleIncidentUpdated, handleNewMessage]);
 
   const fetchAllData = async (showRefreshToast = false) => {
     if (isSystemAdmin) {
@@ -417,10 +674,10 @@ export default function WardAdminDashboard() {
         throw new Error('No authentication token found');
       }
 
-      const headers = {
+      const headers = withTenantHeaders({
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
-      };
+      });
 
       const [dashboardRes, statsRes, resultsRes, partiesRes, incidentsRes, wardRes] = await Promise.all([
         fetch(`${API_BASE_URL}/protected/dashboard`, { headers }),
@@ -471,8 +728,7 @@ export default function WardAdminDashboard() {
       await fetchUnreadCount();
       await fetchZonalAdminContact();
 
-      // ✅ Setup Socket.IO after initial data load
-      setupSocketIO();
+      setupSocketListeners();
 
       if (showRefreshToast) {
         toast({
@@ -513,10 +769,12 @@ export default function WardAdminDashboard() {
   useEffect(() => {
     fetchAllData();
     
-    // ✅ Cleanup Socket.IO on unmount
     return () => {
-      if (socket) {
-        socket.disconnect();
+      if (unsubscribeConnection) {
+        unsubscribeConnection();
+      }
+      if (unsubscribeMessages) {
+        unsubscribeMessages();
       }
     };
   }, [user]);
@@ -562,10 +820,10 @@ export default function WardAdminDashboard() {
       
       const response = await fetch(`${API_BASE_URL}/admin/results/${resultId}/approve`, {
         method: 'POST',
-        headers: {
+        headers: withTenantHeaders({
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
-        },
+        }),
         body: JSON.stringify({ comment }),
       });
 
@@ -610,10 +868,10 @@ export default function WardAdminDashboard() {
       
       const response = await fetch(`${API_BASE_URL}/admin/results/${resultId}/reject`, {
         method: 'POST',
-        headers: {
+        headers: withTenantHeaders({
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
-        },
+        }),
         body: JSON.stringify({ comment }),
       });
 
@@ -742,7 +1000,7 @@ export default function WardAdminDashboard() {
     );
   }
 
-  // ✅ Regular Ward Admin view with hideNotifications={true}
+  // ✅ Regular Ward Admin view
   return (
     <div className="flex flex-col min-h-screen">
       <AdminHeader 
@@ -751,7 +1009,6 @@ export default function WardAdminDashboard() {
         hideNotifications={true}
         actions={
           <div className="flex items-center gap-2">
-            {/* Connection Status */}
             <Badge variant={isConnected ? "default" : "destructive"} className="hidden sm:flex">
               {isConnected ? (
                 <><Wifi className="h-3 w-3 mr-1" /> Live</>
@@ -760,7 +1017,6 @@ export default function WardAdminDashboard() {
               )}
             </Badge>
             
-            {/* ✅ Notifications Panel - Only here, not in AdminHeader */}
             {user?.id && (
               <NotificationsPanel 
                 userId={user.id}
@@ -769,7 +1025,6 @@ export default function WardAdminDashboard() {
               />
             )}
             
-            {/* Message Button */}
             <Button 
               variant="outline" 
               size="sm"
@@ -799,7 +1054,6 @@ export default function WardAdminDashboard() {
       />
       
       <div className="flex-1 p-4 md:p-6 space-y-6">
-        {/* Connection Status Banner */}
         {!isConnected && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-center gap-2 text-sm text-yellow-800">
             <AlertCircle className="h-4 w-4" />
@@ -808,7 +1062,12 @@ export default function WardAdminDashboard() {
               variant="outline" 
               size="sm" 
               className="ml-auto bg-white"
-              onClick={setupSocketIO}
+              onClick={() => {
+                const socket = getSocket();
+                if (socket) {
+                  socket.connect();
+                }
+              }}
             >
               Reconnect
             </Button>
@@ -824,13 +1083,9 @@ export default function WardAdminDashboard() {
           </div>
         </div>
 
-        {/* Stats Overview */}
         <StatsCards stats={wardStats} />
-
-        {/* Results Status */}
         <ResultStatusCards stats={wardStats} />
 
-        {/* Main Content Tabs */}
         <Tabs defaultValue="pending-results" className="space-y-4">
           <TabsList>
             <TabsTrigger value="pending-results" className="gap-2">
@@ -843,7 +1098,7 @@ export default function WardAdminDashboard() {
             </TabsTrigger>
             <TabsTrigger value="agents" className="gap-2">
               <Users className="h-4 w-4" />
-              Agents ({agents.length})
+              Agents ({wardStats.activeAgents + wardStats.offlineAgents})
             </TabsTrigger>
             <TabsTrigger value="incidents" className="gap-2">
               <AlertTriangle className="h-4 w-4" />
@@ -879,7 +1134,6 @@ export default function WardAdminDashboard() {
           </TabsContent>
         </Tabs>
 
-        {/* Parties Quick Reference */}
         <PartiesQuickRef parties={partiesList} />
       </div>
 

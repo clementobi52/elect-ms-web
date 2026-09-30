@@ -1,5 +1,7 @@
 // lib/api/reports.ts
 import { apiClient } from './client';
+import { withTenantHeaders } from '@/lib/tenant';
+import { API_BASE_URL } from '@/lib/config';
 
 export interface Report {
   id: string;
@@ -81,7 +83,6 @@ export const reportsApi = {
       console.log('📡 Downloading report:', reportId);
       
       const token = localStorage.getItem('authToken');
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
       
       // Try multiple possible endpoint paths
       const endpoints = [
@@ -97,9 +98,9 @@ export const reportsApi = {
           
           const response = await fetch(url, {
             method: 'GET',
-            headers: {
+            headers: withTenantHeaders({
               'Authorization': `Bearer ${token}`,
-            },
+            }),
           });
 
           if (response.ok) {

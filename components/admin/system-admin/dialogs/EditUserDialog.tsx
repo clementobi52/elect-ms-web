@@ -1,5 +1,8 @@
 // components/admin/system-admin/dialogs/EditUserDialog.tsx
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+
+"use client";
+
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -11,1053 +14,840 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Separator } from '@/components/ui/separator';
+import { SearchableSelectServer } from '@/components/ui/searchable-select-server';
+import { 
+  Loader2, 
+  AlertTriangle, 
+  Info, 
+  CheckCircle, 
+  User as UserIcon, 
+  Mail, 
+  Shield,
+  MapPin,
+  Building2,
+  Users,
+  UserCog,
+  Sparkles,
+  AlertCircle,
+  X,
+} from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
-import { ROLES } from '@/lib/types';
-import { Loader2, MapPin, UserCog, Users, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
+import { searchPollingUnits, searchWards, searchZones } from '@/lib/api/pollingUnits';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+import { User, Zone, Ward, PollingUnit } from '@/lib/types';
+import { withTenantHeaders } from '@/lib/tenant';
+import { API_BASE_URL } from '@/lib/config';
 
 interface EditUserDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  user: any;
+  user: User | null;
+  zones: Zone[];
+  wards: Ward[];
+  pollingUnits: PollingUnit[];
   onSuccess: () => void;
-  zones?: any[];
-  wards?: any[];
-  pollingUnits?: any[];
-  onRefresh?: () => void;
+  onRefresh: () => void;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+const roleOptions = [
+  { value: 'Polling Agent', label: 'Polling Agent', icon: MapPin, color: 'blue' },
+  { value: 'Ward Admin', label: 'Ward Admin', icon: Building2, color: 'green' },
+  { value: 'Zone Admin', label: 'Zone Admin', icon: Users, color: 'purple' },
+  { value: 'Situation Room Admin', label: 'Situation Room Admin', icon: Shield, color: 'orange' },
+  { value: 'System Admin', label: 'System Admin', icon: Shield, color: 'red' },
+];
 
-// Helper function to get database role value
-const getDatabaseRole = (roleKey: string): string => {
-  switch (roleKey) {
-    case ROLES.POLLING_AGENT:
-      return 'Polling Agent';
-    case ROLES.WARD_ADMIN:
-      return 'Ward Admin';
-    case ROLES.ZONE_ADMIN:
-      return 'Zone Admin';
-    case ROLES.SITUATION_ROOM:
-      return 'Situation Room Admin';
-    case ROLES.SYSTEM_ADMIN:
-      return 'System Admin';
-    default:
-      return roleKey;
-  }
-};
-
-// Helper function to get display role from database role
-const getDisplayRole = (dbRole: string): string => {
-  switch (dbRole) {
-    case 'Polling Agent':
-      return ROLES.POLLING_AGENT;
-    case 'Ward Admin':
-      return ROLES.WARD_ADMIN;
-    case 'Zone Admin':
-      return ROLES.ZONE_ADMIN;
-    case 'Situation Room Admin':
-      return ROLES.SITUATION_ROOM;
-    case 'System Admin':
-      return ROLES.SYSTEM_ADMIN;
-    default:
-      return dbRole;
-  }
-};
-
-// Helper to get role color
-const getRoleColor = (role: string): string => {
-  switch (role) {
-    case ROLES.SYSTEM_ADMIN:
-      return 'bg-red-500';
-    case ROLES.SITUATION_ROOM:
-      return 'bg-purple-500';
-    case ROLES.ZONE_ADMIN:
-      return 'bg-blue-500';
-    case ROLES.WARD_ADMIN:
-      return 'bg-green-500';
-    case ROLES.POLLING_AGENT:
-      return 'bg-yellow-500';
-    default:
-      return 'bg-gray-500';
-  }
-};
-
-// Helper to get zone ID from ward (handles multiple data structures)
-const getWardZoneId = (ward: any): string | null => {
-  if (!ward) return null;
-  return ward.zoneId || 
-         ward.zone?.id || 
-         ward.zone?.zoneId || 
-         ward.zone_id || 
-         null;
-};
-
-// Helper to get ward ID from polling unit
-const getPollingUnitWardId = (pu: any): string | null => {
-  if (!pu) return null;
-  return pu.wardId || 
-         pu.ward?.id || 
-         pu.ward?.wardId || 
-         pu.ward_id || 
-         null;
-};
-
-// Helper to get zone ID from polling unit (through ward)
-const getPollingUnitZoneId = (pu: any): string | null => {
-  if (!pu) return null;
-  // Try to get zone from polling unit's ward
-  if (pu.ward) {
-    return getWardZoneId(pu.ward);
-  }
-  // If polling unit has zone directly
-  return pu.zoneId || 
-         pu.zone?.id || 
-         pu.zone?.zoneId || 
-         pu.zone_id || 
-         null;
-};
-
-// Helper to get ward display name
-const getWardDisplayName = (ward: any): string => {
-  if (!ward) return 'Unknown';
-  const zoneName = ward.zone?.name || ward.zone_name || '';
-  return zoneName ? `${ward.name} (${zoneName})` : ward.name;
-};
-
-// Helper to get polling unit display name with ward and zone info
-const getPollingUnitDisplayName = (pu: any): string => {
-  if (!pu) return 'Unknown';
-  const wardName = pu.ward?.name || pu.wardName || '';
-  const zoneName = pu.ward?.zone?.name || pu.zone?.name || pu.zoneName || '';
-  let display = pu.name;
-  if (wardName) {
-    display += ` (${wardName}`;
-    if (zoneName) {
-      display += `, ${zoneName}`;
-    }
-    display += ')';
-  }
-  return display;
-};
+const statusOptions = [
+  { value: 'Active', label: 'Active', color: 'green' },
+  { value: 'Inactive', label: 'Inactive', color: 'gray' },
+  { value: 'Pending', label: 'Pending', color: 'yellow' },
+  { value: 'Suspended', label: 'Suspended', color: 'red' },
+];
 
 export const EditUserDialog: React.FC<EditUserDialogProps> = ({
   open,
   onOpenChange,
   user,
+  zones,
+  wards,
+  pollingUnits,
   onSuccess,
-  zones = [],
-  wards = [],
-  pollingUnits = [],
   onRefresh,
 }) => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [isFetchingWards, setIsFetchingWards] = useState(false);
-  const [isFetchingPollingUnits, setIsFetchingPollingUnits] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [autoDetectedWard, setAutoDetectedWard] = useState<{ id: string; name: string; zoneId?: string } | null>(null);
+  const [autoDetectedZone, setAutoDetectedZone] = useState<{ id: string; name: string } | null>(null);
+  const [isFetchingPollingUnit, setIsFetchingPollingUnit] = useState(false);
+  const [selectedPollingUnitName, setSelectedPollingUnitName] = useState<string>('');
+  const [selectedWardName, setSelectedWardName] = useState<string>('');
+  const [isManualOverride, setIsManualOverride] = useState(false);
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     role: '',
-    status: 'active',
-    zoneId: '',
-    wardId: '',
     pollingUnitId: '',
+    wardId: '',
+    zoneId: '',
+    status: 'Active',
   });
 
-  // Track if assignment has been changed
-  const [assignmentChanged, setAssignmentChanged] = useState(false);
-  
-  // Local state for filtered data
-  const [filteredWardsByZone, setFilteredWardsByZone] = useState<any[]>([]);
-  const [filteredPollingUnitsByZoneAndWard, setFilteredPollingUnitsByZoneAndWard] = useState<any[]>([]);
-
-  // Debug: Log the props
-  useEffect(() => {
-    console.log('🔍 EditUserDialog Props:', {
-      zonesCount: zones?.length || 0,
-      wardsCount: wards?.length || 0,
-      pollingUnitsCount: pollingUnits?.length || 0,
-      user: user?.name,
-      userRole: user?.role,
-    });
-  }, [zones, wards, pollingUnits, user]);
-
-  // Use useMemo to stabilize arrays
-  const safeZones = useMemo(() => (Array.isArray(zones) ? zones : []), [zones]);
-  const safeWards = useMemo(() => (Array.isArray(wards) ? wards : []), [wards]);
-  const safePollingUnits = useMemo(() => (Array.isArray(pollingUnits) ? pollingUnits : []), [pollingUnits]);
-
-  // Fetch wards by zone from API
-  const fetchWardsByZone = useCallback(async (zoneId: string) => {
-    if (!zoneId) {
-      setFilteredWardsByZone(safeWards);
-      return;
-    }
-    
-    setIsFetchingWards(true);
-    try {
-      const token = localStorage.getItem('authToken');
-      const response = await fetch(`${API_BASE_URL}/admin/zone/${zoneId}/wards`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('📋 Wards fetched for zone:', zoneId, data);
-        const wardsData = Array.isArray(data) ? data : data.wards || data.data || [];
-        setFilteredWardsByZone(wardsData);
-        setIsFetchingWards(false);
-        return;
-      }
-    } catch (error) {
-      console.error('Error fetching wards by zone:', error);
-    }
-    
-    // Fallback: filter from existing wards
-    const filtered = safeWards.filter((w: any) => getWardZoneId(w) === zoneId);
-    setFilteredWardsByZone(filtered);
-    setIsFetchingWards(false);
-  }, [safeWards]);
-
-  // Fetch polling units by ward from API
-  const fetchPollingUnitsByWard = useCallback(async (wardId: string) => {
-    if (!wardId) {
-      setFilteredPollingUnitsByZoneAndWard(safePollingUnits);
-      return;
-    }
-    
-    setIsFetchingPollingUnits(true);
-    try {
-      const token = localStorage.getItem('authToken');
-      const response = await fetch(`${API_BASE_URL}/admin/ward/${wardId}/polling-units`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('📋 Polling units fetched for ward:', wardId, data);
-        const puData = Array.isArray(data) ? data : data.pollingUnits || data.data || [];
-        setFilteredPollingUnitsByZoneAndWard(puData);
-        setIsFetchingPollingUnits(false);
-        return;
-      }
-    } catch (error) {
-      console.error('Error fetching polling units by ward:', error);
-    }
-    
-    // Fallback: filter from existing polling units
-    const filtered = safePollingUnits.filter((pu: any) => getPollingUnitWardId(pu) === wardId);
-    setFilteredPollingUnitsByZoneAndWard(filtered);
-    setIsFetchingPollingUnits(false);
-  }, [safePollingUnits]);
-
-  // Effect: Update filtered wards when zone changes
-  useEffect(() => {
-    if (formData.zoneId) {
-      const filtered = safeWards.filter((w: any) => getWardZoneId(w) === formData.zoneId);
-      
-      if (filtered.length > 0) {
-        console.log('📋 Found wards from existing data:', filtered.length);
-        setFilteredWardsByZone(filtered);
-      } else {
-        console.log('📋 No wards found locally, fetching from API for zone:', formData.zoneId);
-        fetchWardsByZone(formData.zoneId);
-      }
-    } else {
-      setFilteredWardsByZone(safeWards);
-    }
-    
-    // Clear polling units when zone changes
-    setFilteredPollingUnitsByZoneAndWard([]);
-  }, [formData.zoneId, safeWards, fetchWardsByZone]);
-
-  // Effect: Update filtered polling units when ward changes
-  useEffect(() => {
-    if (formData.wardId) {
-      // First, filter by the selected ward
-      const filteredByWard = safePollingUnits.filter((pu: any) => getPollingUnitWardId(pu) === formData.wardId);
-      
-      // If we have a zone selected, further filter to ensure polling units belong to that zone
-      let finalFiltered = filteredByWard;
-      if (formData.zoneId) {
-        finalFiltered = filteredByWard.filter((pu: any) => {
-          const puZoneId = getPollingUnitZoneId(pu);
-          return puZoneId === formData.zoneId;
-        });
-        console.log('📋 Further filtered by zone:', formData.zoneId, 'remaining:', finalFiltered.length);
-      }
-      
-      if (finalFiltered.length > 0) {
-        console.log('📋 Found polling units from existing data:', finalFiltered.length);
-        setFilteredPollingUnitsByZoneAndWard(finalFiltered);
-      } else {
-        console.log('📋 No polling units found locally, fetching from API for ward:', formData.wardId);
-        fetchPollingUnitsByWard(formData.wardId);
-      }
-    } else {
-      // If no ward selected, clear polling units or show all
-      setFilteredPollingUnitsByZoneAndWard([]);
-    }
-  }, [formData.wardId, formData.zoneId, safePollingUnits, fetchPollingUnitsByWard]);
-
-  // Initialize form when user changes
+  // Populate form when user changes
   useEffect(() => {
     if (user) {
-      const displayRole = getDisplayRole(user.role);
+      // Get polling unit name if exists
+      const pollingUnitName = user.pollingUnit?.name || '';
+      setSelectedPollingUnitName(pollingUnitName);
+      
+      // Get ward name if exists
+      const wardName = user.ward?.name || '';
+      setSelectedWardName(wardName);
       
       setFormData({
         name: user.name || '',
         email: user.email || '',
-        role: displayRole || '',
-        status: user.status || 'active',
-        zoneId: user.zoneId || '',
-        wardId: user.wardId || '',
+        role: user.role || '',
         pollingUnitId: user.pollingUnitId || '',
+        wardId: user.wardId || '',
+        zoneId: user.zoneId || '',
+        status: user.status || 'Active',
       });
-      setAssignmentChanged(false);
+
+      // Set auto-detected values if user already has them
+      if (user.ward) {
+        setAutoDetectedWard({
+          id: user.ward.id,
+          name: user.ward.name,
+          zoneId: user.ward.zoneId || null
+        });
+      }
+      if (user.zone) {
+        setAutoDetectedZone({
+          id: user.zone.id,
+          name: user.zone.name
+        });
+      }
     }
   }, [user]);
 
-  // Get current assignment display
-  const getCurrentAssignment = useCallback(() => {
-    if (!user) return { type: 'None', name: 'Not Assigned', id: null };
-    
-    switch (user.role) {
-      case 'Polling Agent':
-        return {
-          type: 'Polling Unit',
-          name: user.pollingUnitName || 'Not Assigned',
-          id: user.pollingUnitId,
-        };
-      case 'Ward Admin':
-        return {
-          type: 'Ward',
-          name: user.wardName || 'Not Assigned',
-          id: user.wardId,
-        };
-      case 'Zone Admin':
-        return {
-          type: 'Zone',
-          name: user.zoneName || 'Not Assigned',
-          id: user.zoneId,
-        };
-      case 'Situation Room Admin':
-        return {
-          type: 'System',
-          name: 'Situation Room Access',
-          id: null,
-        };
-      case 'System Admin':
-        return {
-          type: 'System',
-          name: 'Full System Access',
-          id: null,
-        };
-      default:
-        return {
-          type: 'None',
-          name: 'Not Assigned',
-          id: null,
-        };
+  // Reset form when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setError(null);
+      setIsManualOverride(false);
+      setSelectedWardName('');
     }
-  }, [user]);
+  }, [open]);
 
-  // Get new assignment display based on form data
-  const getNewAssignment = useCallback(() => {
-    switch (formData.role) {
-      case ROLES.POLLING_AGENT:
-        if (formData.pollingUnitId) {
-          const pu = safePollingUnits.find((p: any) => p.id === formData.pollingUnitId);
-          return {
-            type: 'Polling Unit',
-            name: pu?.name || 'Selected',
-            id: formData.pollingUnitId,
-          };
-        }
-        return { type: 'Polling Unit', name: 'Not Assigned', id: null };
-      case ROLES.WARD_ADMIN:
-        if (formData.wardId) {
-          const ward = safeWards.find((w: any) => w.id === formData.wardId);
-          return {
-            type: 'Ward',
-            name: ward?.name || 'Selected',
-            id: formData.wardId,
-          };
-        }
-        return { type: 'Ward', name: 'Not Assigned', id: null };
-      case ROLES.ZONE_ADMIN:
-        if (formData.zoneId) {
-          const zone = safeZones.find((z: any) => z.id === formData.zoneId);
-          return {
-            type: 'Zone',
-            name: zone?.name || 'Selected',
-            id: formData.zoneId,
-          };
-        }
-        return { type: 'Zone', name: 'Not Assigned', id: null };
-      case ROLES.SITUATION_ROOM:
-        return { type: 'System', name: 'Situation Room Access', id: null };
-      case ROLES.SYSTEM_ADMIN:
-        return { type: 'System', name: 'Full System Access', id: null };
-      default:
-        return { type: 'None', name: 'Not Assigned', id: null };
+  const fetchPollingUnitDetails = async (pollingUnitId: string) => {
+    if (!pollingUnitId) {
+      setAutoDetectedWard(null);
+      setAutoDetectedZone(null);
+      setSelectedPollingUnitName('');
+      return;
     }
-  }, [formData, safePollingUnits, safeWards, safeZones]);
 
-  // Check if assignment has changed
-  const hasAssignmentChanged = useCallback(() => {
-    const current = getCurrentAssignment();
-    const newAssignment = getNewAssignment();
-    
-    if (formData.role === ROLES.SYSTEM_ADMIN || formData.role === ROLES.SITUATION_ROOM) {
-      return false;
-    }
-    
-    return current.id !== newAssignment.id || current.name !== newAssignment.name;
-  }, [getCurrentAssignment, getNewAssignment, formData.role]);
-
-  // Handle role change
-  const handleRoleChange = useCallback((value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      role: value,
-      zoneId: '',
-      wardId: '',
-      pollingUnitId: '',
-    }));
-    setAssignmentChanged(true);
-  }, []);
-
-  // Handle zone change - clear ward and polling unit
-  const handleZoneChange = useCallback((value: string) => {
-    const newZoneId = value === 'none' ? '' : value;
-    console.log('🔄 Zone changed to:', newZoneId);
-    setFormData(prev => ({
-      ...prev,
-      zoneId: newZoneId,
-      wardId: '',
-      pollingUnitId: '',
-    }));
-    setAssignmentChanged(true);
-  }, []);
-
-  // Handle ward change - clear polling unit
-  const handleWardChange = useCallback((value: string) => {
-    const newWardId = value === 'none' ? '' : value;
-    console.log('🔄 Ward changed to:', newWardId);
-    setFormData(prev => ({
-      ...prev,
-      wardId: newWardId,
-      pollingUnitId: '',
-    }));
-    setAssignmentChanged(true);
-  }, []);
-
-  // Handle polling unit change
-  const handlePollingUnitChange = useCallback((value: string) => {
-    const newPollingUnitId = value === 'none' ? '' : value;
-    console.log('🔄 Polling Unit changed to:', newPollingUnitId);
-    setFormData(prev => ({
-      ...prev,
-      pollingUnitId: newPollingUnitId,
-    }));
-    setAssignmentChanged(true);
-  }, []);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-
+    setIsFetchingPollingUnit(true);
     try {
-      // Validate based on role
-      if (formData.role === ROLES.ZONE_ADMIN && !formData.zoneId) {
-        toast({
-          title: 'Validation Error',
-          description: 'Please select a zone for the Zone Admin',
-          variant: 'destructive',
-        });
-        setLoading(false);
+      const token = localStorage.getItem('authToken');
+      
+      const response = await fetch(
+        `${API_BASE_URL}/admin/system/polling-units/${pollingUnitId}`,
+        {
+          headers: withTenantHeaders({
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          }),
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const pollingUnit = data.data || data;
+
+        if (pollingUnit.name) {
+          setSelectedPollingUnitName(pollingUnit.name);
+        }
+
+        if (pollingUnit.ward) {
+          const ward = pollingUnit.ward;
+          setAutoDetectedWard({
+            id: ward.id,
+            name: ward.name,
+            zoneId: ward.zoneId || null
+          });
+          setFormData(prev => ({ ...prev, wardId: ward.id }));
+          setIsManualOverride(false);
+        } else {
+          setAutoDetectedWard(null);
+          setFormData(prev => ({ ...prev, wardId: '' }));
+          setIsManualOverride(true);
+        }
+
+        let zone = pollingUnit.zone || pollingUnit.ward?.zone;
+        if (zone) {
+          setAutoDetectedZone({
+            id: zone.id,
+            name: zone.name
+          });
+          setFormData(prev => ({ ...prev, zoneId: zone.id }));
+        } else {
+          setAutoDetectedZone(null);
+          setFormData(prev => ({ ...prev, zoneId: '' }));
+          setIsManualOverride(true);
+        }
+
+        if (pollingUnit.ward && (pollingUnit.zone || pollingUnit.ward?.zone)) {
+          const zoneName = pollingUnit.zone?.name || pollingUnit.ward?.zone?.name || 'Unknown Zone';
+          toast({
+            title: "✅ Auto-detected",
+            description: `Ward: ${pollingUnit.ward.name}, Zone: ${zoneName}`,
+          });
+        } else if (pollingUnit.ward) {
+          toast({
+            title: "⚠️ Partial Detection",
+            description: `Ward: ${pollingUnit.ward.name} (No zone found)`,
+            variant: "default",
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching polling unit details:', error);
+    } finally {
+      setIsFetchingPollingUnit(false);
+    }
+  };
+
+  const handlePollingUnitChange = (value: string) => {
+    setFormData(prev => ({ ...prev, pollingUnitId: value }));
+    if (value) {
+      fetchPollingUnitDetails(value);
+    } else {
+      setAutoDetectedWard(null);
+      setAutoDetectedZone(null);
+      setSelectedPollingUnitName('');
+    }
+  };
+
+  // ✅ NEW: Handle ward selection for Ward Admin - auto-detect zone
+  const handleWardChange = (wardId: string) => {
+    setFormData(prev => ({ ...prev, wardId }));
+    setSelectedWardName('');
+    
+    if (wardId) {
+      // Find the selected ward
+      const selectedWard = wards.find(w => w.id === wardId);
+      if (selectedWard) {
+        setSelectedWardName(selectedWard.name);
+        
+        // Auto-detect zone from ward
+        if (selectedWard.zoneId) {
+          const zone = zones.find(z => z.id === selectedWard.zoneId);
+          if (zone) {
+            setAutoDetectedZone({
+              id: zone.id,
+              name: zone.name
+            });
+            setFormData(prev => ({ ...prev, zoneId: zone.id }));
+            toast({
+              title: "✅ Zone Auto-detected",
+              description: `Zone: ${zone.name}`,
+            });
+          }
+        } else {
+          setAutoDetectedZone(null);
+          setFormData(prev => ({ ...prev, zoneId: '' }));
+          toast({
+            title: "⚠️ No Zone Found",
+            description: "This ward is not assigned to any zone",
+            variant: "default",
+          });
+        }
+      }
+    } else {
+      setAutoDetectedZone(null);
+      setFormData(prev => ({ ...prev, zoneId: '' }));
+    }
+  };
+
+  const clearPollingUnit = () => {
+    setFormData(prev => ({ ...prev, pollingUnitId: '' }));
+    setSelectedPollingUnitName('');
+    setAutoDetectedWard(null);
+    setAutoDetectedZone(null);
+  };
+
+  const handleSubmit = async () => {
+    try {
+      setError(null);
+      setLoading(true);
+
+      if (!user) return;
+
+      // Validation
+      if (!formData.name.trim()) {
+        setError('Name is required');
+        return;
+      }
+      if (!formData.email.trim()) {
+        setError('Email is required');
+        return;
+      }
+      if (!formData.role) {
+        setError('Please select a role');
         return;
       }
 
-      if (formData.role === ROLES.WARD_ADMIN && !formData.wardId) {
-        toast({
-          title: 'Validation Error',
-          description: 'Please select a ward for the Ward Admin',
-          variant: 'destructive',
-        });
-        setLoading(false);
+      if (formData.role === 'Polling Agent' && !formData.pollingUnitId) {
+        setError('Please select a polling unit');
         return;
       }
-
-      if (formData.role === ROLES.POLLING_AGENT && !formData.pollingUnitId) {
-        toast({
-          title: 'Validation Error',
-          description: 'Please select a polling unit for the Polling Agent',
-          variant: 'destructive',
-        });
-        setLoading(false);
+      if (formData.role === 'Ward Admin' && !formData.wardId) {
+        setError('Please select a ward');
+        return;
+      }
+      if (formData.role === 'Zone Admin' && !formData.zoneId) {
+        setError('Please select a zone');
         return;
       }
 
       const token = localStorage.getItem('authToken');
       
-      if (!token) {
-        toast({
-          title: 'Authentication Error',
-          description: 'You are not logged in. Please log in again.',
-          variant: 'destructive',
-        });
-        setLoading(false);
-        return;
-      }
-
-      const updateData: any = {
-        name: formData.name,
-        email: formData.email.toLowerCase(),
-        role: getDatabaseRole(formData.role),
+      // Prepare payload - only send what's needed
+      const payload: any = {
+        name: formData.name.trim(),
+        email: formData.email.trim().toLowerCase(),
+        role: formData.role,
         status: formData.status,
       };
 
-      if (formData.role === ROLES.ZONE_ADMIN) {
-        updateData.zoneId = formData.zoneId || null;
-        updateData.wardId = null;
-        updateData.pollingUnitId = null;
-      } else if (formData.role === ROLES.WARD_ADMIN) {
-        updateData.wardId = formData.wardId || null;
-        updateData.zoneId = null;
-        updateData.pollingUnitId = null;
-      } else if (formData.role === ROLES.POLLING_AGENT) {
-        updateData.pollingUnitId = formData.pollingUnitId || null;
-        updateData.wardId = null;
-        updateData.zoneId = null;
+      if (formData.role === 'Polling Agent') {
+        payload.pollingUnitId = formData.pollingUnitId;
+        // Only send wardId/zoneId if manually overridden
+        if (isManualOverride) {
+          if (formData.wardId) payload.wardId = formData.wardId;
+          if (formData.zoneId) payload.zoneId = formData.zoneId;
+        }
+      } else if (formData.role === 'Ward Admin') {
+        payload.wardId = formData.wardId;
+        // ✅ Include zoneId if auto-detected or manually set
+        if (formData.zoneId) {
+          payload.zoneId = formData.zoneId;
+        }
+      } else if (formData.role === 'Zone Admin') {
+        payload.zoneId = formData.zoneId;
+      }
+
+      console.log('📤 Updating user with payload:', payload);
+
+      const response = await fetch(
+        `${API_BASE_URL}/admin/system/users/${user.id}`,
+        {
+          method: 'PUT',
+          headers: withTenantHeaders({
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          }),
+          body: JSON.stringify(payload),
+        }
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast({
+          title: "✅ User Updated",
+          description: `User "${formData.name}" has been updated successfully.`,
+        });
+        onSuccess();
+        onRefresh();
+        onOpenChange(false);
       } else {
-        updateData.pollingUnitId = null;
-        updateData.wardId = null;
-        updateData.zoneId = null;
+        throw new Error(data.message || 'Failed to update user');
       }
-
-      console.log('📤 Updating user with data:', updateData);
-
-      const response = await fetch(`${API_BASE_URL}/admin/users/${user.id}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updateData),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || error.error || 'Failed to update user');
-      }
-
-      const result = await response.json();
-      console.log('✅ User updated successfully:', result);
-
+    } catch (error: any) {
+      setError(error.message || 'Failed to update user');
       toast({
-        title: 'Success',
-        description: `User ${formData.name} updated successfully${assignmentChanged ? ' with new assignment' : ''}`,
-      });
-
-      onOpenChange(false);
-      onSuccess();
-      if (onRefresh) onRefresh();
-    } catch (error) {
-      console.error('❌ Error updating user:', error);
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to update user',
-        variant: 'destructive',
+        title: "Error",
+        description: error.message || "Failed to update user",
+        variant: "destructive",
       });
     } finally {
       setLoading(false);
     }
   };
 
+  const handleRoleChange = (value: string) => {
+    setFormData({
+      ...formData,
+      role: value,
+      pollingUnitId: '',
+      wardId: '',
+      zoneId: '',
+    });
+    setAutoDetectedWard(null);
+    setAutoDetectedZone(null);
+    setSelectedPollingUnitName('');
+    setSelectedWardName('');
+    setIsManualOverride(false);
+  };
+
   if (!user) return null;
 
-  const currentAssignment = getCurrentAssignment();
-  const newAssignment = getNewAssignment();
-  const isAssignmentRequired = formData.role === ROLES.POLLING_AGENT || 
-                               formData.role === ROLES.WARD_ADMIN || 
-                               formData.role === ROLES.ZONE_ADMIN;
-  const showAssignmentChange = hasAssignmentChanged();
-
-  const selectedZoneName = formData.zoneId ? safeZones.find((z: any) => z.id === formData.zoneId)?.name : 'All Zones';
-  const selectedWardName = formData.wardId ? safeWards.find((w: any) => w.id === formData.wardId)?.name : '';
-
-  // Use filtered wards and polling units
-  const displayWards = filteredWardsByZone.length > 0 ? filteredWardsByZone : safeWards;
-  const displayPollingUnits = filteredPollingUnitsByZoneAndWard.length > 0 ? filteredPollingUnitsByZoneAndWard : [];
+  const isPollingAgent = formData.role === 'Polling Agent';
+  const isWardAdmin = formData.role === 'Ward Admin';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <UserCog className="h-5 w-5" />
-            Edit User
-          </DialogTitle>
-          <DialogDescription>
-            Update user information, role, and assignments
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent 
+        className="max-w-4xl w-full p-0 overflow-hidden sm:max-w-4xl max-h-[90vh] flex flex-col [&>button]:hidden"
+        showCloseButton={false}
+      >
+        {/* Custom Close Button */}
+        <button
+          onClick={() => onOpenChange(false)}
+          className="absolute top-4 right-4 z-20 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-white hover:text-gray-200"
+          >
+            <path d="M18 6L6 18" />
+            <path d="M6 6l12 12" />
+          </svg>
+          <span className="sr-only">Close</span>
+        </button>
 
-        <form onSubmit={handleSubmit}>
-          {/* User Information Section */}
-          <Card className="mb-4">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">User Information</CardTitle>
-              <CardDescription>Basic user details</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center gap-4 p-3 bg-muted/30 rounded-lg">
-                <Avatar className="h-12 w-12">
-                  <AvatarFallback className="text-lg">
-                    {formData.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1">
-                  <p className="font-medium">{formData.name}</p>
-                  <p className="text-sm text-muted-foreground">{formData.email}</p>
-                  <Badge className={`mt-1 ${getRoleColor(formData.role)} text-white`}>
-                    {formData.role || 'No Role'}
-                  </Badge>
+        {/* Header - Fixed */}
+        <div className="sticky top-0 z-10 bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 flex-shrink-0">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3 text-white text-xl">
+              <div className="p-2 bg-white/20 rounded-lg">
+                <UserCog className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <span>Edit User</span>
+                <DialogDescription className="text-blue-100 text-sm mt-0.5">
+                  Update user details, role, and assignments
+                </DialogDescription>
+              </div>
+            </DialogTitle>
+          </DialogHeader>
+        </div>
+
+        {/* Body - Scrollable */}
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-red-700 text-sm">
+              <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* 2-Column Layout */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Left Column - Basic Info */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="h-6 w-1 bg-blue-500 rounded-full" />
+                <h3 className="font-semibold text-sm text-gray-700">Personal Information</h3>
+              </div>
+
+              {/* Name */}
+              <div>
+                <Label htmlFor="editUserName" className="text-xs font-medium text-gray-600 flex items-center gap-1">
+                  <UserIcon className="h-3.5 w-3.5" />
+                  Full Name <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="editUserName"
+                  placeholder="e.g., John Doe"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="mt-1 h-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                />
+              </div>
+
+              {/* Email */}
+              <div>
+                <Label htmlFor="editUserEmail" className="text-xs font-medium text-gray-600 flex items-center gap-1">
+                  <Mail className="h-3.5 w-3.5" />
+                  Email Address <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="editUserEmail"
+                  type="email"
+                  placeholder="e.g., john@example.com"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="mt-1 h-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                />
+              </div>
+
+              {/* Status */}
+              <div>
+                <Label className="text-xs font-medium text-gray-600 flex items-center gap-1 mb-2">
+                  <Shield className="h-3.5 w-3.5" />
+                  Status
+                </Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {statusOptions.map((status) => {
+                    const isSelected = formData.status === status.value;
+                    return (
+                      <button
+                        key={status.value}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, status: status.value })}
+                        className={cn(
+                          "p-2 rounded-lg border-2 text-center transition-all duration-200",
+                          isSelected
+                            ? `border-${status.color}-500 bg-${status.color}-50 ring-2 ring-${status.color}-200`
+                            : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                        )}
+                      >
+                        <span className={cn(
+                          "text-sm font-medium",
+                          isSelected ? `text-${status.color}-700` : "text-gray-700"
+                        )}>
+                          {status.label}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
-                <Badge variant={formData.status === 'active' ? 'default' : 'secondary'}>
-                  {formData.status || 'Active'}
+              </div>
+            </div>
+
+            {/* Right Column - Role & Assignment */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="h-6 w-1 bg-indigo-500 rounded-full" />
+                <h3 className="font-semibold text-sm text-gray-700">Role & Assignment</h3>
+              </div>
+
+              {/* Role Selection */}
+              <div>
+                <Label className="text-xs font-medium text-gray-600 flex items-center gap-1 mb-2">
+                  <Shield className="h-3.5 w-3.5" />
+                  Select Role <span className="text-red-500">*</span>
+                </Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {roleOptions.map((role) => {
+                    const Icon = role.icon;
+                    const isSelected = formData.role === role.value;
+                    return (
+                      <button
+                        key={role.value}
+                        type="button"
+                        onClick={() => handleRoleChange(role.value)}
+                        className={cn(
+                          "p-2 rounded-lg border-2 text-left transition-all duration-200",
+                          isSelected
+                            ? `border-${role.color}-500 bg-${role.color}-50 ring-2 ring-${role.color}-200`
+                            : "border-gray-200 hover:border-gray-300 hover:bg-gray-50",
+                          "flex items-center gap-2"
+                        )}
+                      >
+                        <div className={cn(
+                          "p-1.5 rounded-md",
+                          isSelected ? `bg-${role.color}-100 text-${role.color}-600` : "bg-gray-100 text-gray-500"
+                        )}>
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <span className={cn(
+                          "text-sm font-medium",
+                          isSelected ? `text-${role.color}-700` : "text-gray-700"
+                        )}>
+                          {role.label}
+                        </span>
+                        {isSelected && (
+                          <CheckCircle className={cn(
+                            "h-3.5 w-3.5 ml-auto",
+                            `text-${role.color}-500`
+                          )} />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Role-specific assignment */}
+              {isPollingAgent && (
+                <div className="mt-2">
+                  <Label className="text-xs font-medium text-gray-600 flex items-center gap-1">
+                    <MapPin className="h-3.5 w-3.5" />
+                    Polling Unit <span className="text-red-500">*</span>
+                  </Label>
+                  
+                  {/* Show selected polling unit name with clear button */}
+                  {selectedPollingUnitName ? (
+                    <div className="mt-1 flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
+                      <MapPin className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                      <span className="text-sm font-medium text-blue-700 flex-1 truncate">
+                        {selectedPollingUnitName}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={clearPollingUnit}
+                        className="p-1 hover:bg-blue-100 rounded-full transition-colors"
+                      >
+                        <X className="h-4 w-4 text-blue-500" />
+                      </button>
+                    </div>
+                  ) : (
+                    <SearchableSelectServer
+                      value={formData.pollingUnitId}
+                      onChange={handlePollingUnitChange}
+                      fetchOptions={searchPollingUnits}
+                      placeholder="Search polling unit..."
+                      searchPlaceholder="Type to search..."
+                      emptyMessage="No polling units found"
+                      className="mt-1"
+                      initialOptions={pollingUnits.slice(0, 20)}
+                      portal={true}
+                    />
+                  )}
+                  
+                  <p className="text-xs text-gray-400 mt-1">
+                    {pollingUnits.length.toLocaleString()} polling units available
+                  </p>
+                </div>
+              )}
+
+              {isWardAdmin && (
+                <div className="mt-2">
+                  <Label className="text-xs font-medium text-gray-600 flex items-center gap-1">
+                    <Building2 className="h-3.5 w-3.5" />
+                    Ward <span className="text-red-500">*</span>
+                  </Label>
+                  <SearchableSelectServer
+                    value={formData.wardId}
+                    onChange={handleWardChange}
+                    fetchOptions={searchWards}
+                    placeholder="Search ward..."
+                    searchPlaceholder="Type to search..."
+                    emptyMessage="No wards found"
+                    className="mt-1"
+                    initialOptions={wards.slice(0, 20)}
+                    portal={true}
+                  />
+                  
+                  {/* ✅ Show auto-detected zone for Ward Admin */}
+                  {formData.wardId && autoDetectedZone && (
+                    <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-md flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <span className="text-sm text-green-700">
+                        Zone auto-detected: <strong>{autoDetectedZone.name}</strong>
+                      </span>
+                    </div>
+                  )}
+                  
+                  {formData.wardId && !autoDetectedZone && (
+                    <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                      <span className="text-sm text-yellow-700">
+                        No zone found for this ward. Please select manually.
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {formData.role === 'Zone Admin' && (
+                <div className="mt-2">
+                  <Label className="text-xs font-medium text-gray-600 flex items-center gap-1">
+                    <Users className="h-3.5 w-3.5" />
+                    Zone <span className="text-red-500">*</span>
+                  </Label>
+                  <SearchableSelectServer
+                    value={formData.zoneId}
+                    onChange={(value) => setFormData({ ...formData, zoneId: value })}
+                    fetchOptions={searchZones}
+                    placeholder="Search zone..."
+                    searchPlaceholder="Type to search..."
+                    emptyMessage="No zones found"
+                    className="mt-1"
+                    initialOptions={zones.slice(0, 20)}
+                    portal={true}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Auto-detection Section - Only for Polling Agent */}
+          {isPollingAgent && formData.pollingUnitId && (
+            <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles className="h-4 w-4 text-blue-600" />
+                <h4 className="text-sm font-semibold text-blue-700">Auto-detected Assignment</h4>
+                <Badge variant="outline" className="ml-auto bg-blue-100 text-blue-700 border-blue-200 text-xs">
+                  {isFetchingPollingUnit ? 'Detecting...' : 'AI Powered'}
                 </Badge>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="edit-name">Full Name</Label>
-                  <Input
-                    id="edit-name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Enter full name"
-                    required
-                  />
+              {isFetchingPollingUnit ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
+                  <span className="ml-2 text-sm text-blue-600">Detecting ward and zone...</span>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-email">Email</Label>
-                  <Input
-                    id="edit-email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="Enter email address"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="edit-role">Role</Label>
-                  <Select
-                    value={formData.role}
-                    onValueChange={handleRoleChange}
-                    required
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={ROLES.POLLING_AGENT}>Polling Agent</SelectItem>
-                      <SelectItem value={ROLES.WARD_ADMIN}>Ward Admin</SelectItem>
-                      <SelectItem value={ROLES.ZONE_ADMIN}>Zone Admin</SelectItem>
-                      <SelectItem value={ROLES.SITUATION_ROOM}>Situation Room</SelectItem>
-                      <SelectItem value={ROLES.SYSTEM_ADMIN}>System Admin</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-status">Status</Label>
-                  <Select
-                    value={formData.status}
-                    onValueChange={(value) => setFormData({ ...formData, status: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
-                      <SelectItem value="pending">Pending</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Current vs New Assignment Comparison */}
-          <Card className="mb-4">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <RefreshCw className="h-4 w-4" />
-                Assignment Change
-              </CardTitle>
-              <CardDescription>
-                {isAssignmentRequired 
-                  ? `Current assignment vs new assignment for ${formData.role}`
-                  : 'System-level users have system-wide access'}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 bg-muted/30 rounded-lg">
-                  <p className="text-xs text-muted-foreground mb-1">Current</p>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline">{currentAssignment.type}</Badge>
-                    <span className="text-sm font-medium">{currentAssignment.name}</span>
-                  </div>
-                  {currentAssignment.id && (
-                    <p className="text-xs text-muted-foreground mt-1">ID: {currentAssignment.id}</p>
-                  )}
-                </div>
-
-                <div className={`p-3 rounded-lg ${showAssignmentChange ? 'bg-primary/5 border border-primary/20' : 'bg-muted/30'}`}>
-                  <p className="text-xs text-muted-foreground mb-1">
-                    New {showAssignmentChange && <span className="text-primary">✨</span>}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={showAssignmentChange ? 'default' : 'outline'}>
-                      {newAssignment.type}
-                    </Badge>
-                    <span className={`text-sm font-medium ${showAssignmentChange ? 'text-primary' : ''}`}>
-                      {newAssignment.name}
-                    </span>
-                  </div>
-                  {newAssignment.id && (
-                    <p className="text-xs text-muted-foreground mt-1">ID: {newAssignment.id}</p>
-                  )}
-                  {showAssignmentChange && (
-                    <Badge variant="default" className="mt-2 text-success-600">
-                      <CheckCircle className="h-3 w-3 mr-1" />
-                      Assignment will be updated
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Assignment Management Section */}
-          {isAssignmentRequired && (
-            <Card className="mb-4">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <MapPin className="h-4 w-4" />
-                  Change Assignment
-                </CardTitle>
-                <CardDescription>
-                  Select a new {formData.role === ROLES.POLLING_AGENT ? 'polling unit' : formData.role === ROLES.WARD_ADMIN ? 'ward' : 'zone'} for this user
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Separator />
-
-                {/* Zone Admin Assignment */}
-                {formData.role === ROLES.ZONE_ADMIN && (
-                  <div className="space-y-2">
-                    <Label>Assign to Zone <span className="text-red-500">*</span></Label>
-                    {safeZones.length === 0 ? (
-                      <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center gap-2">
-                        <AlertCircle className="h-4 w-4 text-yellow-600" />
-                        <p className="text-sm text-yellow-700">No zones available. Please create a zone first.</p>
-                      </div>
-                    ) : (
-                      <Select
-                        value={formData.zoneId || 'none'}
-                        onValueChange={handleZoneChange}
-                        required
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder={`Select a zone (${safeZones.length} available)`} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">None</SelectItem>
-                          {safeZones.map((zone) => (
-                            <SelectItem key={zone.id} value={zone.id}>
-                              {zone.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                    {formData.zoneId && (
-                      <p className="text-xs text-muted-foreground">
-                        Selected: {safeZones.find((z: any) => z.id === formData.zoneId)?.name}
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* Ward Admin Assignment */}
-                {formData.role === ROLES.WARD_ADMIN && (
-                  <>
-                    <div className="space-y-2">
-                      <Label>Filter by Zone (Optional)</Label>
-                      {safeZones.length === 0 ? (
-                        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center gap-2">
-                          <AlertCircle className="h-4 w-4 text-yellow-600" />
-                          <p className="text-sm text-yellow-700">No zones available to filter.</p>
-                        </div>
-                      ) : (
-                        <Select
-                          value={formData.zoneId || 'none'}
-                          onValueChange={handleZoneChange}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Filter by zone" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">All Zones</SelectItem>
-                            {safeZones.map((zone) => (
-                              <SelectItem key={zone.id} value={zone.id}>
-                                {zone.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                      {formData.zoneId && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Showing wards in zone: {selectedZoneName}
-                        </p>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Assign to Ward <span className="text-red-500">*</span></Label>
-                      {displayWards.length === 0 ? (
-                        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center gap-2">
-                          <AlertCircle className="h-4 w-4 text-yellow-600" />
-                          <div>
-                            <p className="text-sm text-yellow-700">
-                              {formData.zoneId 
-                                ? `No wards found in the selected zone. Please select a different zone or create wards first.`
-                                : 'No wards available. Please create a ward first.'}
-                            </p>
-                            {isFetchingWards && (
-                              <p className="text-xs text-yellow-600 mt-1">Loading wards...</p>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        <Select
-                          value={formData.wardId || 'none'}
-                          onValueChange={handleWardChange}
-                          required
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder={`Select a ward (${displayWards.length} available)`} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">None</SelectItem>
-                            {displayWards.map((ward: any) => (
-                              <SelectItem key={ward.id} value={ward.id}>
-                                {getWardDisplayName(ward)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                      {formData.wardId && (
-                        <p className="text-xs text-muted-foreground">
-                          Selected: {selectedWardName}
-                        </p>
-                      )}
-                    </div>
-                  </>
-                )}
-
-                {/* Polling Agent Assignment */}
-                {formData.role === ROLES.POLLING_AGENT && (
-                  <>
-                    <div className="space-y-2">
-                      <Label>Filter by Zone (Optional)</Label>
-                      {safeZones.length === 0 ? (
-                        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center gap-2">
-                          <AlertCircle className="h-4 w-4 text-yellow-600" />
-                          <p className="text-sm text-yellow-700">No zones available to filter.</p>
-                        </div>
-                      ) : (
-                        <Select
-                          value={formData.zoneId || 'none'}
-                          onValueChange={handleZoneChange}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Filter by zone" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">All Zones</SelectItem>
-                            {safeZones.map((zone) => (
-                              <SelectItem key={zone.id} value={zone.id}>
-                                {zone.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                      {formData.zoneId && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Selected zone: {selectedZoneName}
-                        </p>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Filter by Ward (Optional)</Label>
-                      {displayWards.length === 0 ? (
-                        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center gap-2">
-                          <AlertCircle className="h-4 w-4 text-yellow-600" />
-                          <div>
-                            <p className="text-sm text-yellow-700">
-                              {formData.zoneId 
-                                ? `No wards found in the selected zone. Please select a different zone or create wards first.`
-                                : 'No wards available. Please create a ward first.'}
-                            </p>
-                            {isFetchingWards && (
-                              <p className="text-xs text-yellow-600 mt-1">Loading wards...</p>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        <Select
-                          value={formData.wardId || 'none'}
-                          onValueChange={handleWardChange}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Filter by ward" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">All Wards</SelectItem>
-                            {displayWards.map((ward: any) => (
-                              <SelectItem key={ward.id} value={ward.id}>
-                                {getWardDisplayName(ward)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                      {formData.wardId && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Selected ward: {selectedWardName}
-                        </p>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Assign to Polling Unit <span className="text-red-500">*</span></Label>
-                      {displayPollingUnits.length === 0 ? (
-                        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center gap-2">
-                          <AlertCircle className="h-4 w-4 text-yellow-600" />
-                          <div>
-                            <p className="text-sm text-yellow-700">
-                              {formData.wardId 
-                                ? `No polling units found in the selected ward.`
-                                : formData.zoneId
-                                ? `Please select a ward first to see polling units in ${selectedZoneName} zone.`
-                                : 'Please select a zone and ward first to see polling units.'}
-                            </p>
-                            {isFetchingPollingUnits && (
-                              <p className="text-xs text-yellow-600 mt-1">Loading polling units...</p>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        <Select
-                          value={formData.pollingUnitId || 'none'}
-                          onValueChange={handlePollingUnitChange}
-                          required
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder={`Select a polling unit (${displayPollingUnits.length} available)`} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">None</SelectItem>
-                            {displayPollingUnits.map((pu: any) => (
-                              <SelectItem key={pu.id} value={pu.id}>
-                                {getPollingUnitDisplayName(pu)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                      {formData.pollingUnitId && (
-                        <p className="text-xs text-muted-foreground">
-                          Selected: {safePollingUnits.find((pu: any) => pu.id === formData.pollingUnitId)?.name}
-                        </p>
-                      )}
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* System Admin / Situation Room Info */}
-          {!isAssignmentRequired && (
-            <Card className="mb-4">
-              <CardContent className="pt-6">
-                <div className="p-3 bg-muted/30 rounded-lg flex items-start gap-2">
-                  <Users className="h-4 w-4 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium">System-Wide Access</p>
-                    <p className="text-sm text-muted-foreground">
-                      {formData.role === ROLES.SYSTEM_ADMIN 
-                        ? 'System Administrators have full system-wide access and can manage all users, zones, wards, and polling units.'
-                        : 'Situation Room administrators have monitoring access across all regions and can view real-time data.'}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <DialogFooter className="sticky bottom-0 bg-background pt-4 border-t">
-            <Button variant="outline" onClick={() => onOpenChange(false)} type="button">
-              Cancel
-            </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Updating...
-                </>
               ) : (
-                'Update User'
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* Ward Status */}
+                  <div className="flex items-center justify-between p-2 bg-white rounded-md border border-gray-100">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="h-4 w-4 text-gray-500" />
+                      <span className="text-sm font-medium text-gray-600">Ward</span>
+                    </div>
+                    {autoDetectedWard ? (
+                      <Badge className="bg-green-100 text-green-700 border-green-200 flex items-center gap-1">
+                        <CheckCircle className="h-3 w-3" />
+                        {autoDetectedWard.name}
+                      </Badge>
+                    ) : (
+                      <Badge variant="destructive" className="flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        Not found
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Zone Status */}
+                  <div className="flex items-center justify-between p-2 bg-white rounded-md border border-gray-100">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4 text-gray-500" />
+                      <span className="text-sm font-medium text-gray-600">Zone</span>
+                    </div>
+                    {autoDetectedZone ? (
+                      <Badge className="bg-green-100 text-green-700 border-green-200 flex items-center gap-1">
+                        <CheckCircle className="h-3 w-3" />
+                        {autoDetectedZone.name}
+                      </Badge>
+                    ) : (
+                      <Badge variant="destructive" className="flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        Not found
+                      </Badge>
+                    )}
+                  </div>
+                </div>
               )}
-            </Button>
-          </DialogFooter>
-        </form>
+
+              {/* Manual Override */}
+              {(!autoDetectedWard || !autoDetectedZone) && !isFetchingPollingUnit && (
+                <div className="mt-3 pt-3 border-t border-blue-200">
+                  <p className="text-xs text-amber-600 flex items-center gap-1 mb-2">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Manual override required - please select below:
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {!autoDetectedWard && (
+                      <div>
+                        <Label className="text-xs text-gray-600">Select Ward</Label>
+                        <SearchableSelectServer
+                          value={formData.wardId}
+                          onChange={(value) => {
+                            setFormData({ ...formData, wardId: value });
+                            setIsManualOverride(true);
+                          }}
+                          fetchOptions={searchWards}
+                          placeholder="Search ward..."
+                          searchPlaceholder="Type to search..."
+                          emptyMessage="No wards found"
+                          className="mt-0.5"
+                          initialOptions={wards.slice(0, 20)}
+                          portal={true}
+                        />
+                      </div>
+                    )}
+                    {!autoDetectedZone && (
+                      <div>
+                        <Label className="text-xs text-gray-600">Select Zone</Label>
+                        <SearchableSelectServer
+                          value={formData.zoneId}
+                          onChange={(value) => {
+                            setFormData({ ...formData, zoneId: value });
+                            setIsManualOverride(true);
+                          }}
+                          fetchOptions={searchZones}
+                          placeholder="Search zone..."
+                          searchPlaceholder="Type to search..."
+                          emptyMessage="No zones found"
+                          className="mt-0.5"
+                          initialOptions={zones.slice(0, 20)}
+                          portal={true}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <p className="text-xs text-blue-600 mt-2 flex items-center gap-1">
+                <Info className="h-3 w-3" />
+                Ward and Zone are automatically assigned based on the selected polling unit
+              </p>
+            </div>
+          )}
+
+          {/* Current Assignment Info - Show for non-agent roles */}
+          {!isPollingAgent && formData.role && (
+            <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="flex items-center gap-2">
+                <Info className="h-4 w-4 text-gray-500" />
+                <span className="text-sm text-gray-600">
+                  {formData.role === 'Ward Admin' && 'Assign a ward to this admin'}
+                  {formData.role === 'Zone Admin' && 'Assign a zone to this admin'}
+                  {(formData.role === 'Situation Room Admin' || formData.role === 'System Admin') && 
+                    'This role does not require specific assignments'}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer - Fixed */}
+        <DialogFooter className="sticky bottom-0 bg-gray-50 border-t px-6 py-3 flex-shrink-0">
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className="hover:bg-gray-100"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={loading}
+            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Updating...
+              </>
+            ) : (
+              <>
+                <UserCog className="h-4 w-4 mr-2" />
+                Update User
+              </>
+            )}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 };
+
+export default EditUserDialog;

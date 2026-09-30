@@ -1,6 +1,11 @@
 // lib/socket-service.ts
 
 import { io, Socket } from 'socket.io-client';
+import { apiClient } from './api/client';
+import { getSocketAuth } from './tenant';
+import { SOCKET_URL } from '@/lib/config';
+
+const getAuthToken = () => apiClient.getAuthToken();
 
 let socket: Socket | null = null;
 let connectionListeners: Array<(connected: boolean) => void> = [];
@@ -8,10 +13,9 @@ let messageListeners: Array<(event: string, data: any) => void> = [];
 
 export const getSocket = () => {
   if (!socket) {
-    const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5001';
-    
+
     console.log('🔌 Creating shared socket connection to:', SOCKET_URL);
-    
+
     socket = io(SOCKET_URL, {
       path: '/socket.io',
       transports: ['polling', 'websocket'],
@@ -20,11 +24,19 @@ export const getSocket = () => {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       timeout: 20000,
+      // The handshake is verified server-side by io.use(): a missing token, an
+      // unknown tenant, or a token belonging to a different tenant is refused.
+      // This is also what replaces the old client-asserted `authenticate`
+      // event, which the server used to trust for identity and role.
+      auth: getSocketAuth(getAuthToken()),
       autoConnect: true,
     });
     
     // Log all connection events for debugging
     socket.on('connect', () => {
+      // Re-read the credentials so a token refreshed mid-session is used by the
+      // next reconnect.
+      socket!.auth = getSocketAuth(getAuthToken());
       console.log('✅ Socket connected! ID:', socket?.id);
       connectionListeners.forEach(listener => listener(true));
     });

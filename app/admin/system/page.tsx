@@ -24,6 +24,7 @@ import { PartiesTab } from '@/components/admin/system-admin/tabs/PartiesTab';
 // Import types
 import { Zone, Ward, PollingUnit, User, SystemStats, Pagination, LogFilters, Party } from '@/components/admin/system-admin/types';
 import { ROLES } from '@/lib/types';
+import { API_BASE_URL } from '@/lib/config';
 
 // API functions
 import { 
@@ -95,7 +96,6 @@ export default function SystemAdminDashboard() {
     open: false, type: '', id: '', name: ''
   });
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
   // Fetch all data on mount
   useEffect(() => {

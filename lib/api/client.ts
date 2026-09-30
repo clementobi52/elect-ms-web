@@ -1,6 +1,8 @@
 // lib/api/client.ts
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+import { setTenantSlug, withTenantHeaders } from '../tenant';
+import { API_BASE_URL } from '@/lib/config';
+
 
 export interface ApiResponse<T = any> {
   success: boolean;
@@ -25,16 +27,19 @@ class ApiClient {
 
   private getHeaders(): HeadersInit {
     const token = this.getAuthToken();
-    
-    const headers: HeadersInit = {
+
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
-    
+
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
-    
-    return headers;
+
+    // Every request names the tenant. The server cross-checks this against the
+    // tenantId in the token, so a stale slug produces a clear 400 rather than a
+    // request served against the wrong tenant's rows.
+    return withTenantHeaders(headers);
   }
 
   private handleError(error: any): never {
@@ -78,7 +83,9 @@ class ApiClient {
     if (response.status === 401) {
       return this.handleUnauthorized(response);
     }
-    
+
+    await this.handleTenantRejection(response);
+
     if (response.status === 403) {
       const error = await response.json().catch(() => ({}));
       throw new Error(error.message || 'Access denied. You do not have permission to perform this action.');
@@ -110,6 +117,18 @@ class ApiClient {
   private isOnLoginPage(): boolean {
     if (typeof window === 'undefined') return false;
     return window.location.pathname.includes('/login');
+  }
+
+  /**
+   * Record the tenant the server authenticated us into, taken from the
+   * login/signup response. Called alongside setAuthToken so the slug used by
+   * later requests and the socket handshake always comes from a response the
+   * server actually issued.
+   */
+  rememberTenant(tenant?: { slug?: string } | null): void {
+    if (tenant?.slug) {
+      setTenantSlug(tenant.slug);
+    }
   }
 
   // ✅ SAFE: Set auth token with additional security checks
@@ -203,6 +222,9 @@ class ApiClient {
       sessionStorage.removeItem('authToken');
       localStorage.removeItem('refreshToken');
       sessionStorage.removeItem('refreshToken');
+      // The slug belongs to the session that just ended. Leaving it behind
+      // would send a new user's requests under the old tenant's name.
+      setTenantSlug(null);
       
       // Clear window property if exists
       if (typeof window !== 'undefined') {
@@ -290,6 +312,31 @@ class ApiClient {
     return result;
   }
 
+  /**
+   * A token signed before tenancy existed has no tenantId, and the server
+   * rejects it with a message telling the user to sign in again. Handle that
+   * the same as an expired session instead of looping on failing requests.
+   */
+  private async handleTenantRejection(response: Response): Promise<boolean> {
+    if (response.status !== 400) return false;
+
+    let message = '';
+    try {
+      const data = await response.clone().json().catch(() => ({}));
+      message = data.message || '';
+    } catch {
+      return false;
+    }
+
+    if (!/tenant/i.test(message)) return false;
+
+    this.clearAuthToken();
+    this.redirectToLogin(
+      'Your account is not linked to this organization. Please sign in again.'
+    );
+    throw new Error(message);
+  }
+
   private async performRefresh(): Promise<boolean> {
     const refreshToken = localStorage.getItem('refreshToken') || sessionStorage.getItem('refreshToken');
     
@@ -318,9 +365,9 @@ class ApiClient {
       
       const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        // Sent on refresh too: the endpoint resolves the tenant the same way
+        // every other route does, so a refresh without it is a 400.
+        headers: this.getHeaders(),
         body: JSON.stringify({ refreshToken }),
       });
 
@@ -338,7 +385,11 @@ class ApiClient {
       if (data.token) {
         // Store new token
         this.setAuthToken(data.token);
-        
+
+        // The refreshed token is bound to a tenant; keep the stored slug in
+        // step with whatever the server said this session is.
+        this.rememberTenant(data.tenant);
+
         // Store new refresh token if provided
         if (data.refreshToken) {
           localStorage.setItem('refreshToken', data.refreshToken);

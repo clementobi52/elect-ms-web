@@ -63,6 +63,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { apiClient } from '@/lib/api/client';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { withTenantHeaders } from '@/lib/tenant';
 
 // Types
 interface Report {
@@ -159,9 +160,9 @@ const reportsApi = {
   downloadReport: async (reportId: string): Promise<Blob> => {
     try {
       const response = await fetch(`http://localhost:5001/api/admin/reports/download/${reportId}`, {
-        headers: {
+        headers: withTenantHeaders({
           'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
-        },
+        }),
       });
       
       if (!response.ok) {

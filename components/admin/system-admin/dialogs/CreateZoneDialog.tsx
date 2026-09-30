@@ -12,6 +12,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
+import { withTenantHeaders } from '@/lib/tenant';
+import { API_BASE_URL } from '@/lib/config';
 
 interface CreateZoneDialogProps {
   open: boolean;
@@ -19,7 +21,6 @@ interface CreateZoneDialogProps {
   onSuccess: () => void;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
 export const CreateZoneDialog: React.FC<CreateZoneDialogProps> = ({
   open,
@@ -38,10 +39,10 @@ export const CreateZoneDialog: React.FC<CreateZoneDialogProps> = ({
       const token = localStorage.getItem('authToken');
       const response = await fetch(`${API_BASE_URL}/admin/zones`, {
         method: 'POST',
-        headers: {
+        headers: withTenantHeaders({
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify({ name }),
       });
 
