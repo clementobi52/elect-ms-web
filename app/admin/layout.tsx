@@ -47,10 +47,19 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
       }
 
       // Polling agents should not access admin panel
-      if (user && user.role === ROLES.POLLING_AGENT) {
-        router.push('/unauthorized');
-        return;
-      }
+if (user && user.role === ROLES.POLLING_AGENT) {
+          router.push('/unauthorized');
+          return;
+        }
+
+        // A Platform Admin belongs to no tenant, so every page under /admin is
+        // the wrong page for them - they have no zones, wards or polling units.
+        // Sending them to their own area is clearer than an unauthorized page,
+        // and their token is refused by the /api routes anyway.
+        if (user && user.role === ROLES.PLATFORM_ADMIN) {
+          router.push('/platform');
+          return;
+        }
 
       // Handle role-based routing
       if (user) {
@@ -132,9 +141,17 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!isAuthenticated || !user || user.role === ROLES.POLLING_AGENT) {
-    return null;
-  }
+// PLATFORM_ADMIN is here for the same reason POLLING_AGENT is: the effect above
+    // is asynchronous, and without this the admin shell renders for a frame
+    // before the redirect fires.
+    if (
+      !isAuthenticated ||
+      !user ||
+      user.role === ROLES.POLLING_AGENT ||
+      user.role === ROLES.PLATFORM_ADMIN
+    ) {
+      return null;
+    }
 
   return (
     <div className="flex h-screen overflow-hidden">

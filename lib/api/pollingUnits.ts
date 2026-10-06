@@ -54,9 +54,17 @@ export interface PollingUnitStats {
 // lib/api/pollingUnits.ts - Updated search functions
 
 /**
- * Search polling units with server-side filtering
+ * Search polling units with server-side filtering.
+ *
+ * `scope` optionally narrows the results, for the zone -> ward -> polling unit
+ * cascade: `{ wardId }` restricts to a ward's units, `{ zoneId }` to a zone's.
+ * The backend's getAllPollingUnits accepts both, so the same endpoint serves
+ * the walk-anywhere search and the filtered walk-down.
  */
-export const searchPollingUnits = async (search: string): Promise<PollingUnitOption[]> => {
+export const searchPollingUnits = async (
+  search: string,
+  scope?: { wardId?: string; zoneId?: string; limit?: number }
+): Promise<PollingUnitOption[]> => {
   try {
     const token = localStorage.getItem('authToken');
     if (!token) {
@@ -65,9 +73,15 @@ export const searchPollingUnits = async (search: string): Promise<PollingUnitOpt
     }
 
     const params = new URLSearchParams();
-    params.append('limit', '50');
+    params.append('limit', String(scope?.limit || 50));
     if (search && search.length >= 2) {
       params.append('search', search);
+    }
+    if (scope?.wardId) {
+      params.append('wardId', scope.wardId);
+    }
+    if (scope?.zoneId) {
+      params.append('zoneId', scope.zoneId);
     }
     
     // Use the correct endpoint - matches your routes
@@ -112,9 +126,16 @@ export const searchPollingUnits = async (search: string): Promise<PollingUnitOpt
 
 
 /**
- * Search wards with server-side filtering
+ * Search wards with server-side filtering.
+ *
+ * `scope.zoneId` narrows the results, so the Role & Assignment cascade (pick a
+ * zone, then a ward inside it) hits the same endpoint as the walk-anywhere
+ * search. getAllWards accepts zoneId.
  */
-export const searchWards = async (search: string): Promise<PollingUnitOption[]> => {
+export const searchWards = async (
+  search: string,
+  scope?: { zoneId?: string; limit?: number }
+): Promise<PollingUnitOption[]> => {
   try {
     const token = localStorage.getItem('authToken');
     if (!token) {
@@ -123,9 +144,12 @@ export const searchWards = async (search: string): Promise<PollingUnitOption[]> 
     }
 
     const params = new URLSearchParams();
-    params.append('limit', '50');
+    params.append('limit', String(scope?.limit || 50));
     if (search && search.length >= 2) {
       params.append('search', search);
+    }
+    if (scope?.zoneId) {
+      params.append('zoneId', scope.zoneId);
     }
     
     const url = `${API_BASE_URL}/admin/system/wards?${params.toString()}`;

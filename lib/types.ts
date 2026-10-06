@@ -9,8 +9,12 @@ export const ROLES = {
   WARD_ADMIN: 'ward_admin',
   ZONE_ADMIN: 'zone_admin',
   SITUATION_ROOM: 'situation_room',
-  SYSTEM_ADMIN: 'system_admin',
-} as const;
+SYSTEM_ADMIN: 'system_admin',
+    // The one role that is scoped to no tenant: it manages the tenant list itself.
+    // Its user row has no tenantId, so it has no /admin area at all - it lands in
+    // /platform. Do not add it to any ROLES array that gates tenant-scoped pages.
+    PLATFORM_ADMIN: 'platform_admin',
+  } as const;
 
 export type Role = typeof ROLES[keyof typeof ROLES];
 
@@ -20,13 +24,15 @@ export const ROLE_DISPLAY_NAMES = {
   'ward_admin': 'Ward Admin',
   'zone_admin': 'Zone Admin',
   'situation_room': 'Situation Room Admin',
-  'system_admin': 'System Admin',
-  'Polling Agent': 'Polling Agent',
-  'Ward Admin': 'Ward Admin',
-  'Zone Admin': 'Zone Admin',
-  'Situation Room Admin': 'Situation Room Admin',
-  'System Admin': 'System Admin',
-} as const;
+'system_admin': 'System Admin',
+    'platform_admin': 'Platform Admin',
+    'Polling Agent': 'Polling Agent',
+    'Ward Admin': 'Ward Admin',
+    'Zone Admin': 'Zone Admin',
+    'Situation Room Admin': 'Situation Room Admin',
+    'System Admin': 'System Admin',
+    'Platform Admin': 'Platform Admin',
+  } as const;
 
 // ✅ ADD: Role options for dropdowns
 export const ROLE_OPTIONS = [
@@ -321,16 +327,32 @@ export const PERMISSIONS = {
     canGenerateReports: true,
     canManageUsers: false,
   },
-  [ROLES.SYSTEM_ADMIN]: {
-    canViewAllData: true,
-    canManageAllUsers: true,
-    canManageZones: true,
-    canManageWards: true,
-    canManagePollingUnits: true,
-    canViewSystemLogs: true,
-    canConfigureSystem: true,
-  },
-} as const;
+[ROLES.SYSTEM_ADMIN]: {
+      canViewAllData: true,
+      canManageAllUsers: true,
+      canManageZones: true,
+      canManageWards: true,
+      canManagePollingUnits: true,
+      canViewSystemLogs: true,
+      canConfigureSystem: true,
+    },
+    // Every permission is false, and that is the intent rather than an omission.
+    // A Platform Admin belongs to no tenant, so there is no zone, ward or polling
+    // unit whose data they are cleared to read; granting a tenant permission here
+    // would hand out access the server would then refuse. Their authority is
+    // tenant management through /api/platform, which does not consult this map.
+    // The entry exists because PERMISSIONS is keyed by Role and is indexed by
+    // role - without it, every lookup throws rather than returning false.
+    [ROLES.PLATFORM_ADMIN]: {
+      canViewAllData: false,
+      canManageAllUsers: false,
+      canManageZones: false,
+      canManageWards: false,
+      canManagePollingUnits: false,
+      canViewSystemLogs: false,
+      canConfigureSystem: false,
+    },
+  } as const;
 
 // ============================================
 // HELPER FUNCTIONS

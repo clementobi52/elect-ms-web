@@ -436,6 +436,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return originalFetch(...args);
       }
 
+      // The platform area is excluded, and this check has to come first - the
+      // tenant header is attached immediately below it. A Platform Admin has no
+      // tenant: their token is in lib/platform/session.ts, not 'authToken', and
+      // their requests must not name a tenant at all.
+      //
+      // Today the platform routes sit outside this provider (only app/admin and
+      // app/login mount it), so this is a guard rather than a live fix. It is here
+      // so the isolation is explicit: the moment someone moves AuthProvider into a
+      // shared root layout, or a platform page renders while a tenant session is
+      // still mounted, the header cannot silently start riding along. The failure
+      // it prevents is quiet - the server would resolve the tenant and every
+      // platform query would come back scoped to it.
+      if (url.includes('/api/platform')) {
+        return originalFetch(...args);
+      }
+
       // The tenant goes on every API request, including the auth and public
       // ones that the token logic below skips. The server refuses a request
       // that cannot name its tenant (400), so a skip here is a broken request,
@@ -595,10 +611,14 @@ function getRedirectPath(role: Role): string {
       return '/admin/zone';
     case ROLES.SITUATION_ROOM:
       return '/admin/situation-room';
-    case ROLES.SYSTEM_ADMIN:
-      return '/admin/system';
-    default:
-      return '/';
+case ROLES.SYSTEM_ADMIN:
+        return '/admin/system';
+      case ROLES.PLATFORM_ADMIN:
+        // Not /admin: a Platform Admin belongs to no tenant, so every
+        // tenant-scoped page under /admin is wrong for them.
+        return '/platform';
+      default:
+        return '/';
   }
 }
 

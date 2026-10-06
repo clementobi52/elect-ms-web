@@ -84,6 +84,12 @@ export const EditUserDialog: React.FC<EditUserDialogProps> = ({
   const [selectedPollingUnitName, setSelectedPollingUnitName] = useState<string>('');
   const [selectedWardName, setSelectedWardName] = useState<string>('');
   const [isManualOverride, setIsManualOverride] = useState(false);
+  // Cascade filters for the Role & Assignment section. They narrow where the
+  // assignment picker searches: a zone narrows the wards, a ward (in turn)
+  // narrows the polling units. Orthogonal to the assignment itself - choosing a
+  // polling unit still auto-detects its ward and zone.
+  const [filterZoneId, setFilterZoneId] = useState('');
+  const [filterWardId, setFilterWardId] = useState('');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -139,6 +145,8 @@ export const EditUserDialog: React.FC<EditUserDialogProps> = ({
       setError(null);
       setIsManualOverride(false);
       setSelectedWardName('');
+      setFilterZoneId('');
+      setFilterWardId('');
     }
   }, [open]);
 
@@ -230,6 +238,26 @@ export const EditUserDialog: React.FC<EditUserDialogProps> = ({
       setAutoDetectedZone(null);
       setSelectedPollingUnitName('');
     }
+  };
+
+  const handleZoneFilterChange = (zoneId: string) => {
+    setFilterZoneId(zoneId);
+    setFilterWardId('');
+    // A changed filter invalidates whatever was picked under the old one.
+    setFormData(prev => ({ ...prev, pollingUnitId: '', wardId: '', zoneId: '' }));
+    setAutoDetectedWard(null);
+    setAutoDetectedZone(null);
+    setSelectedPollingUnitName('');
+    setIsManualOverride(false);
+  };
+
+  const handleWardFilterChange = (wardId: string) => {
+    setFilterWardId(wardId);
+    setFormData(prev => ({ ...prev, pollingUnitId: '', wardId: '', zoneId: '' }));
+    setAutoDetectedWard(null);
+    setAutoDetectedZone(null);
+    setSelectedPollingUnitName('');
+    setIsManualOverride(false);
   };
 
   // ✅ NEW: Handle ward selection for Ward Admin - auto-detect zone
@@ -393,6 +421,8 @@ export const EditUserDialog: React.FC<EditUserDialogProps> = ({
     setSelectedPollingUnitName('');
     setSelectedWardName('');
     setIsManualOverride(false);
+    setFilterZoneId('');
+    setFilterWardId('');
   };
 
   if (!user) return null;
@@ -585,83 +615,170 @@ export const EditUserDialog: React.FC<EditUserDialogProps> = ({
 
               {/* Role-specific assignment */}
               {isPollingAgent && (
-                <div className="mt-2">
-                  <Label className="text-xs font-medium text-gray-600 flex items-center gap-1">
-                    <MapPin className="h-3.5 w-3.5" />
-                    Polling Unit <span className="text-red-500">*</span>
-                  </Label>
-                  
-                  {/* Show selected polling unit name with clear button */}
-                  {selectedPollingUnitName ? (
-                    <div className="mt-1 flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
-                      <MapPin className="h-4 w-4 text-blue-500 flex-shrink-0" />
-                      <span className="text-sm font-medium text-blue-700 flex-1 truncate">
-                        {selectedPollingUnitName}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={clearPollingUnit}
-                        className="p-1 hover:bg-blue-100 rounded-full transition-colors"
-                      >
-                        <X className="h-4 w-4 text-blue-500" />
-                      </button>
-                    </div>
-                  ) : (
+                <div className="mt-2 space-y-3">
+                  {/* Zone filter */}
+                  <div>
+                    <Label className="text-xs font-medium text-gray-600 flex items-center gap-1">
+                      <Users className="h-3.5 w-3.5" />
+                      Filter by Zone
+                    </Label>
                     <SearchableSelectServer
-                      value={formData.pollingUnitId}
-                      onChange={handlePollingUnitChange}
-                      fetchOptions={searchPollingUnits}
-                      placeholder="Search polling unit..."
+                      value={filterZoneId}
+                      onChange={handleZoneFilterChange}
+                      fetchOptions={searchZones}
+                      placeholder="All zones"
                       searchPlaceholder="Type to search..."
-                      emptyMessage="No polling units found"
+                      emptyMessage="No zones found"
                       className="mt-1"
-                      initialOptions={pollingUnits.slice(0, 20)}
+                      initialOptions={zones.slice(0, 20)}
                       portal={true}
                     />
-                  )}
-                  
-                  <p className="text-xs text-gray-400 mt-1">
-                    {pollingUnits.length.toLocaleString()} polling units available
-                  </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Optional - narrows the ward and polling unit lists below
+                    </p>
+                  </div>
+
+                  {/* Ward filter */}
+                  <div>
+                    <Label className="text-xs font-medium text-gray-600 flex items-center gap-1">
+                      <Building2 className="h-3.5 w-3.5" />
+                      Filter by Ward
+                    </Label>
+                    <SearchableSelectServer
+                      value={filterWardId}
+                      onChange={handleWardFilterChange}
+                      fetchOptions={searchWards}
+                      fetchParams={filterZoneId ? { zoneId: filterZoneId } : undefined}
+                      placeholder={filterZoneId ? 'Select a ward in zone...' : 'All wards'}
+                      searchPlaceholder="Type to search..."
+                      emptyMessage="No wards found"
+                      className="mt-1"
+                      initialOptions={wards.slice(0, 20)}
+                      portal={true}
+                    />
+                  </div>
+
+                  {/* Polling Unit assignment */}
+                  <div>
+                    <Label className="text-xs font-medium text-gray-600 flex items-center gap-1">
+                      <MapPin className="h-3.5 w-3.5" />
+                      Polling Unit <span className="text-red-500">*</span>
+                    </Label>
+                    
+                    {/* Show selected polling unit name with clear button */}
+                    {selectedPollingUnitName ? (
+                      <div className="mt-1 flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
+                        <MapPin className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                        <span className="text-sm font-medium text-blue-700 flex-1 truncate">
+                          {selectedPollingUnitName}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={clearPollingUnit}
+                          className="p-1 hover:bg-blue-100 rounded-full transition-colors"
+                        >
+                          <X className="h-4 w-4 text-blue-500" />
+                        </button>
+                      </div>
+                    ) : (
+                      <SearchableSelectServer
+                        value={formData.pollingUnitId}
+                        onChange={handlePollingUnitChange}
+                        fetchOptions={searchPollingUnits}
+                        fetchParams={
+                          filterWardId
+                            ? { wardId: filterWardId }
+                            : filterZoneId
+                              ? { zoneId: filterZoneId }
+                              : undefined
+                        }
+                        placeholder={
+                          filterWardId
+                            ? 'Select polling unit in ward...'
+                            : filterZoneId
+                              ? 'Select polling unit in zone...'
+                              : 'Search polling unit...'
+                        }
+                        searchPlaceholder="Type to search..."
+                        emptyMessage="No polling units found"
+                        className="mt-1"
+                        initialOptions={pollingUnits.slice(0, 20)}
+                        portal={true}
+                      />
+                    )}
+                    
+                    <p className="text-xs text-gray-400 mt-1">
+                      {filterWardId
+                        ? 'Listed for the selected ward'
+                        : filterZoneId
+                          ? 'Listed for the selected zone'
+                          : `${pollingUnits.length.toLocaleString()} polling units available`}
+                    </p>
+                  </div>
                 </div>
               )}
 
               {isWardAdmin && (
-                <div className="mt-2">
-                  <Label className="text-xs font-medium text-gray-600 flex items-center gap-1">
-                    <Building2 className="h-3.5 w-3.5" />
-                    Ward <span className="text-red-500">*</span>
-                  </Label>
-                  <SearchableSelectServer
-                    value={formData.wardId}
-                    onChange={handleWardChange}
-                    fetchOptions={searchWards}
-                    placeholder="Search ward..."
-                    searchPlaceholder="Type to search..."
-                    emptyMessage="No wards found"
-                    className="mt-1"
-                    initialOptions={wards.slice(0, 20)}
-                    portal={true}
-                  />
-                  
-                  {/* ✅ Show auto-detected zone for Ward Admin */}
-                  {formData.wardId && autoDetectedZone && (
-                    <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-md flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                      <span className="text-sm text-green-700">
-                        Zone auto-detected: <strong>{autoDetectedZone.name}</strong>
-                      </span>
-                    </div>
-                  )}
-                  
-                  {formData.wardId && !autoDetectedZone && (
-                    <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md flex items-center gap-2">
-                      <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                      <span className="text-sm text-yellow-700">
-                        No zone found for this ward. Please select manually.
-                      </span>
-                    </div>
-                  )}
+                <div className="mt-2 space-y-3">
+                  {/* Zone filter */}
+                  <div>
+                    <Label className="text-xs font-medium text-gray-600 flex items-center gap-1">
+                      <Users className="h-3.5 w-3.5" />
+                      Filter by Zone
+                    </Label>
+                    <SearchableSelectServer
+                      value={filterZoneId}
+                      onChange={handleZoneFilterChange}
+                      fetchOptions={searchZones}
+                      placeholder="All zones"
+                      searchPlaceholder="Type to search..."
+                      emptyMessage="No zones found"
+                      className="mt-1"
+                      initialOptions={zones.slice(0, 20)}
+                      portal={true}
+                    />
+                    <p className="text-xs text-gray-400 mt-1">
+                      Optional - narrows the ward list below
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label className="text-xs font-medium text-gray-600 flex items-center gap-1">
+                      <Building2 className="h-3.5 w-3.5" />
+                      Ward <span className="text-red-500">*</span>
+                    </Label>
+                    <SearchableSelectServer
+                      value={formData.wardId}
+                      onChange={handleWardChange}
+                      fetchOptions={searchWards}
+                      fetchParams={filterZoneId ? { zoneId: filterZoneId } : undefined}
+                      placeholder={filterZoneId ? 'Select a ward in zone...' : 'Search ward...'}
+                      searchPlaceholder="Type to search..."
+                      emptyMessage="No wards found"
+                      className="mt-1"
+                      initialOptions={wards.slice(0, 20)}
+                      portal={true}
+                    />
+                    
+                    {/* ✅ Show auto-detected zone for Ward Admin */}
+                    {formData.wardId && autoDetectedZone && (
+                      <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-md flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                        <span className="text-sm text-green-700">
+                          Zone auto-detected: <strong>{autoDetectedZone.name}</strong>
+                        </span>
+                      </div>
+                    )}
+                    
+                    {formData.wardId && !autoDetectedZone && (
+                      <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                        <span className="text-sm text-yellow-700">
+                          No zone found for this ward. Please select manually.
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -763,6 +880,7 @@ export const EditUserDialog: React.FC<EditUserDialogProps> = ({
                             setIsManualOverride(true);
                           }}
                           fetchOptions={searchWards}
+                          fetchParams={filterZoneId ? { zoneId: filterZoneId } : undefined}
                           placeholder="Search ward..."
                           searchPlaceholder="Type to search..."
                           emptyMessage="No wards found"
