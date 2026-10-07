@@ -51,7 +51,7 @@ function required(name: string, fallback: string): string {
 }
 
 /** Base URL for REST calls, e.g. "https://api.example.com/api". */
-export const API_BASE_URL = required('NEXT_PUBLIC_API_URL', 'http://localhost:5001/api');
+export const API_BASE_URL = required('NEXT_PUBLIC_API_URL', 'https://d-elect-db.onrender.com/api');
 
 /**
  * API origin with no /api suffix, for URLs that are not REST calls - the
@@ -60,7 +60,7 @@ export const API_BASE_URL = required('NEXT_PUBLIC_API_URL', 'http://localhost:50
 export const API_ORIGIN = API_BASE_URL.replace(/\/api$/, '');
 
 /** Origin for the Socket.IO connection, with no /api suffix. */
-export const SOCKET_URL = required('NEXT_PUBLIC_SOCKET_URL', 'http://localhost:5001');
+export const SOCKET_URL = required('NEXT_PUBLIC_SOCKET_URL', 'https://d-elect-db.onrender.com');
 
 /**
  * Tenant a visitor is assumed to belong to before they have signed in.
