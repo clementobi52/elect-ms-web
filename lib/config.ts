@@ -2,56 +2,20 @@
 //
 // Single place where the API and socket URLs are resolved.
 //
-// These used to be read inline as
-//   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api'
-// in about twenty files. The fallback is convenient locally and dangerous
-// everywhere else: a deployment that forgets to set the variable does not fail,
-// it silently talks to a developer's machine, and the symptom surfaces much
-// later as every request 401-ing or 400-ing with no obvious cause. Under
-// multi-tenancy that failure is even harder to read, because a wrong host also
-// means a request that never reaches the tenant middleware at all.
-//
-// So: the fallback stays for local development, and in production a missing
-// variable is a hard error rather than a silent default.
-//
-// The error is raised when the app is actually serving traffic, not while
-// `next build` is prerendering. Failing the build would mean anyone compiling
-// the app needs the full production environment, and the tempting response to
-// that is to delete the guard. During a build the fallback is allowed but
-// logged, so a misconfigured deployment is still visible in the build log.
-
-const isProduction = process.env.NODE_ENV === 'production';
-
-// Next.js sets this for the build process; it is absent when the built app runs.
-const isBuild = process.env.NEXT_PHASE === 'phase-production-build';
+// The deployed backend host is committed here as the fallback so that any build
+// - on Vercel, Render, or locally - produces a client bundle that points at a
+// real server. NEXT_PUBLIC_* environment variables still override these when
+// they are set at build time.
 
 /** Strip a trailing slash so callers can append '/path' without doubling it. */
 function normalize(url: string): string {
   return url.endsWith('/') ? url.slice(0, -1) : url;
 }
 
-function required(name: string, fallback: string): string {
-  const value = process.env[name];
-  if (value) return normalize(value);
-
-  if (isProduction) {
-    const message =
-      `${name} is not set. Refusing to fall back to ${fallback}, because that ` +
-      `silently points live traffic at a local machine. Set ${name} in the ` +
-      `deployment environment.`;
-
-    if (isBuild) {
-      console.warn(`[config] ${message} Falling back for this build only.`);
-    } else {
-      throw new Error(message);
-    }
-  }
-
-  return normalize(fallback);
-}
-
 /** Base URL for REST calls, e.g. "https://api.example.com/api". */
-export const API_BASE_URL = required('NEXT_PUBLIC_API_URL', 'https://d-elect-db.onrender.com/api');
+export const API_BASE_URL = normalize(
+  process.env.NEXT_PUBLIC_API_URL || 'https://d-elect-db.onrender.com/api'
+);
 
 /**
  * API origin with no /api suffix, for URLs that are not REST calls - the
@@ -60,7 +24,9 @@ export const API_BASE_URL = required('NEXT_PUBLIC_API_URL', 'https://d-elect-db.
 export const API_ORIGIN = API_BASE_URL.replace(/\/api$/, '');
 
 /** Origin for the Socket.IO connection, with no /api suffix. */
-export const SOCKET_URL = required('NEXT_PUBLIC_SOCKET_URL', 'https://d-elect-db.onrender.com');
+export const SOCKET_URL = normalize(
+  process.env.NEXT_PUBLIC_SOCKET_URL || 'https://d-elect-db.onrender.com'
+);
 
 /**
  * Tenant a visitor is assumed to belong to before they have signed in.
