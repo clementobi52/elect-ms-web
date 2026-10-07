@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/use-toast';
+import { withTenantHeaders } from '@/lib/tenant';
 import { API_BASE_URL } from '@/lib/config';
 
 interface Agent {
@@ -23,35 +24,6 @@ interface Agent {
   status?: 'Online' | 'Offline';
   lastActive?: string;
 }
-
-// Demo data
-const DEMO_AGENTS: Agent[] = [
-  {
-    id: '1',
-    name: 'John Doe',
-    email: 'john.doe@example.com',
-    pollingUnitName: 'Polling Unit 1',
-    wardName: 'Ward 1',
-    zoneName: 'Zone A',
-    status: 'Online',
-    lastActive: 'Just now',
-    resultsSubmitted: 5,
-    lastKnownLocation: { latitude: 6.5244, longitude: 3.3792 }
-  },
-  {
-    id: '2',
-    name: 'Jane Smith',
-    email: 'jane.smith@example.com',
-    pollingUnitName: 'Polling Unit 2',
-    wardName: 'Ward 1',
-    zoneName: 'Zone A',
-    status: 'Online',
-    lastActive: '2 min ago',
-    resultsSubmitted: 3,
-    lastKnownLocation: { latitude: 6.5245, longitude: 3.3793 }
-  },
-  // ... more demo data
-];
 
 export function useAgents(options?: {
   autoRefresh?: boolean;
@@ -83,24 +55,22 @@ export function useAgents(options?: {
       }
 
       let url = '';
-      const headers = { 
+      const headers = withTenantHeaders({ 
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
-      };
+      });
 
       // Determine endpoint based on user role
-      if (user.role === 'System Admin') {
-        url = `${API_BASE_URL}/admin/users?role=Polling Agent`;
-      } else if (user.role === 'Situation Room Admin') {
-        url = `${API_BASE_URL}/admin/users?role=Polling Agent`;
+      if (user.role === 'System Admin' || user.role === 'Situation Room Admin') {
+        url = `${API_BASE_URL}/admin/system/users?role=Polling Agent`;
       } else if (user.role === 'Zone Admin' && user.zoneId) {
         url = `${API_BASE_URL}/admin/zone/${user.zoneId}/agents`;
       } else if (user.role === 'Ward Admin' && user.wardId) {
         url = `${API_BASE_URL}/admin/ward/${user.wardId}/agents`;
       } else {
-        // Fallback to demo data
-        setAgents(DEMO_AGENTS);
-        setUsingDemoData(true);
+        setAgents([]);
+        setUsingDemoData(false);
+        setError('Agents are not available for your role.');
         return;
       }
 
@@ -159,26 +129,30 @@ export function useAgents(options?: {
           });
         }
       } else {
-        // Fallback to demo data
-        setAgents(DEMO_AGENTS);
-        setUsingDemoData(true);
+        let detail = '';
+        try { detail = await response.text(); } catch {}
+        console.error(`Agents request failed: HTTP ${response.status}`, detail);
+        setAgents([]);
+        setUsingDemoData(false);
+        setError(`Failed to load agents (HTTP ${response.status})`);
         if (showToastMessage) {
           toast({
-            title: "Demo Mode",
-            description: "Showing sample agent data",
+            title: "Error",
+            description: `Failed to load agents (HTTP ${response.status})`,
+            variant: "destructive",
           });
         }
       }
     } catch (error) {
       console.error('Error fetching agents:', error);
-      setAgents(DEMO_AGENTS);
-      setUsingDemoData(true);
+      setAgents([]);
+      setUsingDemoData(false);
       setError('Failed to load agents');
       if (showToastMessage) {
         toast({
-          title: "Demo Mode",
-          description: "Showing sample agent data",
-          variant: "default",
+          title: "Error",
+          description: "Failed to load agents",
+          variant: "destructive",
         });
       }
     } finally {

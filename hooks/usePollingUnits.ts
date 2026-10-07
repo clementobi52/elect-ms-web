@@ -152,7 +152,7 @@ export function usePollingUnits(options?: {
             units = data;
           }
 
-          if (units.length > 0) {
+          if (Array.isArray(units)) {
             const transformedUnits = units.map((unit: any) => ({
               id: unit.id,
               name: unit.name,
@@ -200,7 +200,7 @@ export function usePollingUnits(options?: {
           const data = await response.json();
           let units = data.pollingUnits || data.data || (Array.isArray(data) ? data : []);
           
-          if (units.length > 0) {
+          if (Array.isArray(units)) {
             const transformedUnits = units.map((unit: any) => ({
               id: unit.id,
               name: unit.name,
@@ -244,7 +244,7 @@ export function usePollingUnits(options?: {
           const data = await response.json();
           let units = data.pollingUnits || data.data || (Array.isArray(data) ? data : []);
           
-          if (units.length > 0) {
+          if (Array.isArray(units)) {
             const transformedUnits = units.map((unit: any) => ({
               id: unit.id,
               name: unit.name,
@@ -289,7 +289,7 @@ export function usePollingUnits(options?: {
           // Handle both array response and object with data property
           let units = Array.isArray(data) ? data : (data.data || data.pollingUnits || []);
           
-          if (units.length > 0) {
+          if (Array.isArray(units)) {
             const transformedUnits = units.map((unit: any) => ({
               id: unit.id,
               name: unit.name,
@@ -318,15 +318,17 @@ export function usePollingUnits(options?: {
         }
       }
 
-      // If we get here, no valid data was received
-      console.log('No data received, using demo data');
-      setPollingUnits(DEMO_POLLING_UNITS);
-      setUsingDemoData(true);
+      // If we get here, the request was not successful or the shape was wrong.
+      console.error('Failed to load polling units; no demo fallback');
+      setPollingUnits([]);
+      setUsingDemoData(false);
+      setError('Failed to load polling units');
       
       if (showToastMessage) {
         toast({
-          title: "Demo Mode",
-          description: "Showing sample polling units",
+          title: "Error",
+          description: "Failed to load polling units",
+          variant: "destructive",
         });
       }
 
@@ -334,12 +336,12 @@ export function usePollingUnits(options?: {
       console.error('Error fetching polling units:', error);
       setPollingUnits(DEMO_POLLING_UNITS);
       setUsingDemoData(true);
-      setError('Failed to load polling units');
+      setError('Backend unavailable; showing demo data');
       
       if (showToastMessage) {
         toast({
           title: "Demo Mode",
-          description: "Showing sample polling units",
+          description: "Backend connection failed; showing sample polling units",
           variant: "default",
         });
       }
