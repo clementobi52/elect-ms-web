@@ -289,92 +289,36 @@ export default function SituationRoomAgentsPage() {
       console.log(`📨 Agents: Handling socket event: ${event}`, data);
       
       switch (event) {
-        case 'agents-update':
-          if (data && data.agents) {
-            const uniqueAgents = deduplicateById(data.agents);
-            setAgents(uniqueAgents);
-            if (data.stats) setStats(data.stats);
-            if (data.pagination) setPagination(data.pagination);
-          }
-          break;
-        case 'agent-status-change':
-          if (data && data.agentId) {
+        // The backend emits a single agent presence event, `agent-status-update`
+        // (utils/socket.js), carrying { agentId, status, timestamp, wardId,
+        // zoneId, online?, total? }. These names previously did not match any
+        // emitted event, so this page never received live agent updates.
+        case 'agent-status-update':
+          if (data && data.agentId && data.status) {
             setAgents(prev => 
               prev.map(agent => 
                 agent.id === data.agentId 
-                  ? { ...agent, status: data.status, lastActive: data.timestamp }
+                  ? { ...agent, status: data.status, lastActive: data.timestamp || agent.lastActive }
                   : agent
               )
             );
-            // Update stats
-            setStats(prev => {
-              const newStats = { ...prev };
-              if (data.status === 'Online') {
-                newStats.online = (newStats.online || 0) + 1;
-                newStats.offline = Math.max(0, (newStats.offline || 0) - 1);
-              } else if (data.status === 'Offline') {
-                newStats.offline = (newStats.offline || 0) + 1;
-                newStats.online = Math.max(0, (newStats.online || 0) - 1);
-              }
-              return newStats;
-            });
+
+            // The offline sweep includes the authoritative per-ward counts.
+            // Online updates from location pings do not, so leave the aggregate
+            // alone in that case rather than guessing the previous status.
+            if (typeof data.online === 'number' && typeof data.total === 'number') {
+              setStats(prev => ({
+                ...prev,
+                online: data.online,
+                offline: data.total - data.online,
+              }));
+            }
+
             toast({
               title: "👤 Agent Status Update",
-              description: `${data.agentName} is now ${data.status}`,
+              description: `${data.agentName || 'Agent'} is now ${data.status}`,
               duration: 3000,
             });
-          }
-          break;
-        case 'agent-assigned':
-          if (data && data.agent) {
-            setAgents(prev => 
-              prev.map(agent => 
-                agent.id === data.agent.id 
-                  ? { ...agent, ...data.agent, status: 'Online' }
-                  : agent
-              )
-            );
-            setStats(prev => ({
-              ...prev,
-              total: prev.total + 1,
-              unassigned: Math.max(0, (prev.unassigned || 0) - 1),
-              online: (prev.online || 0) + 1
-            }));
-            toast({
-              title: "✅ Agent Assigned",
-              description: `${data.agent.name} has been assigned to a polling unit.`,
-              duration: 4000,
-            });
-          }
-          break;
-        case 'incident-reported':
-          if (data && data.agentId) {
-            setAgents(prev => 
-              prev.map(agent => 
-                agent.id === data.agentId 
-                  ? { ...agent, incidentsReported: (agent.incidentsReported || 0) + 1 }
-                  : agent
-              )
-            );
-            setStats(prev => ({
-              ...prev,
-              withIncidents: (prev.withIncidents || 0) + 1
-            }));
-          }
-          break;
-        case 'result-submitted':
-          if (data && data.agentId) {
-            setAgents(prev => 
-              prev.map(agent => 
-                agent.id === data.agentId 
-                  ? { ...agent, resultsSubmitted: (agent.resultsSubmitted || 0) + 1 }
-                  : agent
-              )
-            );
-            setStats(prev => ({
-              ...prev,
-              withResults: (prev.withResults || 0) + 1
-            }));
           }
           break;
         default:

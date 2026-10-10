@@ -242,32 +242,70 @@ export function useSituationRoomData(options?: {
     try {
       const zoneId = options?.zoneId;
 
+      // Authoritative aggregate stats/zones/activities. The dashboard used to be
+      // assembled entirely from the incident list, so agent counts were hardcoded
+      // to zero and zone/polling-unit totals only reflected zones that happened to
+      // have an incident. /situation/dashboard computes them server-side.
+      let dash: any = null;
+      try {
+        const dashToken = localStorage.getItem('authToken');
+        const dashRes = await fetch(`${API_BASE_URL}/situation/dashboard`, {
+          headers: withTenantHeaders({
+            'Authorization': `Bearer ${dashToken}`,
+            'Content-Type': 'application/json',
+          }),
+        });
+        if (dashRes.ok) {
+          const dashJson = await dashRes.json();
+          if (dashJson?.success && dashJson.data) {
+            dash = dashJson.data;
+          }
+        }
+      } catch (dashErr) {
+        console.warn('Could not fetch situation dashboard:', dashErr);
+      }
+
+      const dashStats = dash?.stats || null;
+      const dashZones = Array.isArray(dash?.zones) ? dash.zones : null;
+      const dashVotes = Array.isArray(dash?.votesSummary) ? dash.votesSummary : null;
+      const dashActivities = Array.isArray(dash?.recentActivities) ? dash.recentActivities : null;
+
+      const toActivityItem = (a: any): ActivityItem => ({
+        id: a.id || `act-${Date.now()}`,
+        type: a.type || 'incident',
+        message: a.message || 'New activity',
+        time: a.time || getTimeAgo(a.createdAt),
+        icon: getActivityIcon(a.type),
+        data: a.data,
+        createdAt: a.createdAt,
+      });
+
       // Fetch incidents with coordinates
       const incidentResponse = await incidentsApi.getIncidentsForMap();
       
       if (!incidentResponse.success) {
-        setError(incidentResponse.error || 'Failed to fetch incident data');
         setData({
-          stats: null,
-          zones: [],
+          stats: dashStats,
+          zones: dashZones || [],
           incidents: [],
-          activities: [],
-          votesSummary: [],
-          timestamp: undefined,
+          activities: (dashActivities || []).map(toActivityItem),
+          votesSummary: dashVotes || [],
+          timestamp: dash?.timestamp,
         });
+        setError(incidentResponse.error || 'Failed to fetch incident data');
         return;
       }
 
       if (!incidentResponse.incidents || incidentResponse.incidents.length === 0) {
-        setError('No incidents found');
         setData({
-          stats: null,
-          zones: [],
+          stats: dashStats,
+          zones: dashZones || [],
           incidents: [],
-          activities: [],
-          votesSummary: [],
-          timestamp: undefined,
+          activities: (dashActivities || []).map(toActivityItem),
+          votesSummary: dashVotes || [],
+          timestamp: dash?.timestamp,
         });
+        setError(null);
         return;
       }
 
@@ -435,12 +473,14 @@ export function useSituationRoomData(options?: {
       }
 
       setData({
-        stats,
-        zones,
+        stats: dashStats || stats,
+        zones: dashZones || zones,
         incidents: formattedIncidents,
-        activities: activities.slice(0, 25), // Limit to 25 activities
-        votesSummary: votes,
-        timestamp: new Date().toISOString(),
+        activities: dashActivities
+          ? dashActivities.map(toActivityItem)
+          : activities.slice(0, 25),
+        votesSummary: dashVotes || votes,
+        timestamp: dash?.timestamp || new Date().toISOString(),
       });
 
       setError(null);

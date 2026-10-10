@@ -107,7 +107,7 @@ interface Agent {
   email: string;
   phone?: string;
   role: string;
-  status: 'Active' | 'Inactive' | 'Pending';
+  status: 'Online' | 'Offline' | 'Unassigned';
   wardId?: string;
   wardName?: string;
   zoneId?: string;
@@ -135,6 +135,7 @@ interface AgentStats {
   withResults: number;
   online: number;
   offline: number;
+  unassigned: number;
 }
 
 interface PaginationData {
@@ -182,12 +183,12 @@ const formatTimeAgo = (date: string) => {
 
 const getStatusBadge = (status: string) => {
   switch (status) {
-    case 'Active':
-      return <Badge className="bg-green-500 text-white">Active</Badge>;
-    case 'Inactive':
-      return <Badge variant="secondary">Inactive</Badge>;
-    case 'Pending':
-      return <Badge className="bg-yellow-500 text-white">Pending</Badge>;
+    case 'Online':
+      return <Badge className="bg-green-500 text-white">Online</Badge>;
+    case 'Offline':
+      return <Badge variant="secondary">Offline</Badge>;
+    case 'Unassigned':
+      return <Badge className="bg-yellow-500 text-white">Unassigned</Badge>;
     default:
       return <Badge variant="outline">Unknown</Badge>;
   }
@@ -195,11 +196,11 @@ const getStatusBadge = (status: string) => {
 
 const getStatusDot = (status: string) => {
   switch (status) {
-    case 'Active':
+    case 'Online':
       return <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse inline-block mr-1.5" />;
-    case 'Inactive':
+    case 'Offline':
       return <span className="h-2 w-2 rounded-full bg-gray-400 inline-block mr-1.5" />;
-    case 'Pending':
+    case 'Unassigned':
       return <span className="h-2 w-2 rounded-full bg-yellow-500 inline-block mr-1.5" />;
     default:
       return <span className="h-2 w-2 rounded-full bg-gray-300 inline-block mr-1.5" />;
@@ -241,6 +242,7 @@ export default function SystemAgentsPage() {
     withResults: 0,
     online: 0,
     offline: 0,
+    unassigned: 0,
   });
 
   // Filter State
@@ -588,8 +590,8 @@ export default function SystemAgentsPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-green-700 font-medium">Active</p>
-                  <p className="text-2xl font-bold text-green-900">{formatNumber(stats.active)}</p>
+                  <p className="text-sm text-green-700 font-medium">Online</p>
+                  <p className="text-2xl font-bold text-green-900">{formatNumber(stats.online)}</p>
                 </div>
                 <div className="h-10 w-10 rounded-full bg-green-200 flex items-center justify-center">
                   <UserCheck className="h-5 w-5 text-green-700" />
@@ -602,8 +604,8 @@ export default function SystemAgentsPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-yellow-700 font-medium">Pending</p>
-                  <p className="text-2xl font-bold text-yellow-900">{formatNumber(stats.pending)}</p>
+                  <p className="text-sm text-yellow-700 font-medium">Unassigned</p>
+                  <p className="text-2xl font-bold text-yellow-900">{formatNumber(stats.unassigned)}</p>
                 </div>
                 <div className="h-10 w-10 rounded-full bg-yellow-200 flex items-center justify-center">
                   <Clock className="h-5 w-5 text-yellow-700" />
@@ -616,8 +618,8 @@ export default function SystemAgentsPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-red-700 font-medium">Inactive</p>
-                  <p className="text-2xl font-bold text-red-900">{formatNumber(stats.inactive)}</p>
+                  <p className="text-sm text-red-700 font-medium">Offline</p>
+                  <p className="text-2xl font-bold text-red-900">{formatNumber(stats.offline)}</p>
                 </div>
                 <div className="h-10 w-10 rounded-full bg-red-200 flex items-center justify-center">
                   <UserX className="h-5 w-5 text-red-700" />
@@ -727,9 +729,9 @@ export default function SystemAgentsPage() {
                   onChange={(e) => handleFilterChange('status', e.target.value)}
                 >
                   <option value="all">All Statuses</option>
-                  <option value="Active">Active</option>
-                  <option value="Inactive">Inactive</option>
-                  <option value="Pending">Pending</option>
+                  <option value="Online">Online</option>
+                  <option value="Offline">Offline</option>
+                  <option value="Unassigned">Unassigned</option>
                 </select>
               </div>
               <div>
@@ -1161,16 +1163,16 @@ export default function SystemAgentsPage() {
               <div>
                 <Label>Status</Label>
                 <Select
-                  value={editForm.status || 'Active'}
-                  onValueChange={(value) => setEditForm({ ...editForm, status: value as 'Active' | 'Inactive' | 'Pending' })}
+                  value={editForm.status || 'Offline'}
+                  onValueChange={(value) => setEditForm({ ...editForm, status: value as Agent['status'] })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Active">Active</SelectItem>
-                    <SelectItem value="Inactive">Inactive</SelectItem>
-                    <SelectItem value="Pending">Pending</SelectItem>
+                    <SelectItem value="Online">Online</SelectItem>
+                    <SelectItem value="Offline">Offline</SelectItem>
+                    <SelectItem value="Unassigned">Unassigned</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

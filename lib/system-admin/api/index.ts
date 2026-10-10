@@ -608,6 +608,7 @@ export const fetchAgents = async (
         withResults: 0,
         online: 0,
         offline: 0,
+        unassigned: 0,
       },
       filters: data.filters || {},
     };
