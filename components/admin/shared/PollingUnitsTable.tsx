@@ -17,7 +17,7 @@ interface PollingUnit {
   registeredVoters: number;
   agentName: string;
   agentId?: string;
-  agentStatus: 'Online' | 'Offline';
+  agentStatus: 'Online' | 'Offline' | 'Unassigned';
   location: {
     latitude: number;
     longitude: number;
