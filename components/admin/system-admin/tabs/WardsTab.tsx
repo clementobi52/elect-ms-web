@@ -1,6 +1,6 @@
 // components/admin/system-admin/tabs/WardsTab.tsx
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Card,
   CardContent,
@@ -61,7 +61,6 @@ interface WardsTabProps {
   onPageChange?: (page: number) => void;
   onRefresh: () => void;
   onDelete: (type: string, id: string, name: string) => void;
-  onFetchWardsInZone: (zoneId: string) => void;
   onFetchWards?: (page: number, filters?: any) => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
@@ -73,10 +72,8 @@ export const WardsTab: React.FC<WardsTabProps> = ({
   wards,
   zones,
   pagination,
-  onPageChange,
   onRefresh,
   onDelete,
-  onFetchWardsInZone,
   onFetchWards,
   searchQuery,
   setSearchQuery,
@@ -90,55 +87,65 @@ export const WardsTab: React.FC<WardsTabProps> = ({
   const [isEditWardOpen, setIsEditWardOpen] = useState(false);
   const [localSearch, setLocalSearch] = useState(searchQuery);
 
-  // ✅ FETCH WARDS ON INITIAL MOUNT
-  useEffect(() => {
-    if (onFetchWards) {
-      onFetchWards(1, { 
-        search: searchQuery, 
-        zoneId: selectedZone !== 'all' ? selectedZone : undefined 
-      });
-    }
-  }, []); // Empty dependency array - runs once on mount
+  const firstLoad = useRef(true);
+  const fetchWardsRef = useRef(onFetchWards);
+  fetchWardsRef.current = onFetchWards;
 
-  // Debounce search
+  const buildFilters = (search: string, zone: string) => ({
+    search: search || undefined,
+    zoneId: zone && zone !== 'all' ? zone : undefined,
+  });
+
+  // Single, debounced fetch that runs once on mount and whenever the search or
+  // zone filter changes. The callback is held in a ref so parent re-renders do
+  // not re-trigger the effect (which previously caused duplicate/racing fetches).
   useEffect(() => {
+    const fetch = fetchWardsRef.current;
+    if (!fetch) return;
+
+    const zoneId = selectedZone !== 'all' ? selectedZone : undefined;
+
+    if (firstLoad.current) {
+      firstLoad.current = false;
+      fetch(1, { search: localSearch || undefined, zoneId });
+      return;
+    }
+
     const timer = setTimeout(() => {
-      if (localSearch !== searchQuery) {
-        setSearchQuery(localSearch);
-        if (onFetchWards) {
-          onFetchWards(1, { search: localSearch, zoneId: selectedZone !== 'all' ? selectedZone : undefined });
-        }
-      }
-    }, 500);
+      setSearchQuery(localSearch);
+      fetch(1, { search: localSearch || undefined, zoneId });
+    }, 400);
 
     return () => clearTimeout(timer);
-  }, [localSearch, searchQuery, setSearchQuery, onFetchWards, selectedZone]);
+  }, [localSearch, selectedZone, setSearchQuery]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setSearchQuery(localSearch);
-    if (onFetchWards) {
-      onFetchWards(1, { search: localSearch, zoneId: selectedZone !== 'all' ? selectedZone : undefined });
-    }
+    fetchWardsRef.current?.(1, buildFilters(localSearch, selectedZone));
   };
 
   const clearFilters = () => {
     setLocalSearch('');
     setSearchQuery('');
     setSelectedZone('all');
-    if (onFetchWards) {
-      onFetchWards(1, {});
-    }
   };
 
   const handleZoneFilter = (value: string) => {
     setSelectedZone(value);
-    if (onFetchWards) {
-      onFetchWards(1, { zoneId: value !== 'all' ? value : undefined, search: searchQuery });
-    }
-    if (value && value !== 'all') {
-      onFetchWardsInZone(value);
-    }
+  };
+
+  // Refresh the table with the currently active filters after a create/edit.
+  const handleDialogSuccess = () => {
+    onRefresh();
+    fetchWardsRef.current?.(1, buildFilters(localSearch, selectedZone));
+  };
+
+  // Page through results without dropping the active filters.
+  const goToPage = (page: number) => {
+    if (!pagination) return;
+    if (page < 1 || page > pagination.totalPages) return;
+    fetchWardsRef.current?.(page, buildFilters(localSearch, selectedZone));
   };
 
   const hasActiveFilters = searchQuery || (selectedZone && selectedZone !== 'all');
@@ -342,7 +349,7 @@ export const WardsTab: React.FC<WardsTabProps> = ({
                   variant="outline"
                   size="icon"
                   className="h-8 w-8"
-                  onClick={() => onPageChange && onPageChange(1)}
+                  onClick={() => goToPage(1)}
                   disabled={pagination.page === 1}
                 >
                   <ChevronsLeft className="h-4 w-4" />
@@ -351,7 +358,7 @@ export const WardsTab: React.FC<WardsTabProps> = ({
                   variant="outline"
                   size="icon"
                   className="h-8 w-8"
-                  onClick={() => onPageChange && onPageChange(pagination.page - 1)}
+                  onClick={() => goToPage(pagination.page - 1)}
                   disabled={pagination.page === 1}
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -367,7 +374,7 @@ export const WardsTab: React.FC<WardsTabProps> = ({
                   variant="outline"
                   size="icon"
                   className="h-8 w-8"
-                  onClick={() => onPageChange && onPageChange(pagination.page + 1)}
+                  onClick={() => goToPage(pagination.page + 1)}
                   disabled={pagination.page === pagination.totalPages}
                 >
                   <ChevronRight className="h-4 w-4" />
@@ -376,7 +383,7 @@ export const WardsTab: React.FC<WardsTabProps> = ({
                   variant="outline"
                   size="icon"
                   className="h-8 w-8"
-                  onClick={() => onPageChange && onPageChange(pagination.totalPages)}
+                  onClick={() => goToPage(pagination.totalPages)}
                   disabled={pagination.page === pagination.totalPages}
                 >
                   <ChevronsRight className="h-4 w-4" />
@@ -391,14 +398,14 @@ export const WardsTab: React.FC<WardsTabProps> = ({
         open={isCreateWardOpen}
         onOpenChange={setIsCreateWardOpen}
         zones={zones}
-        onSuccess={onRefresh}
+        onSuccess={handleDialogSuccess}
       />
 
       <EditWardDialog
         open={isEditWardOpen}
         onOpenChange={setIsEditWardOpen}
         ward={editingWard}
-        onSuccess={onRefresh}
+        onSuccess={handleDialogSuccess}
       />
 
       <ViewWardDialog

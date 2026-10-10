@@ -31,8 +31,6 @@ import {
   fetchAllData, 
   fetchZonesPaginated, 
   fetchPollingUnits, 
-  fetchUnassignedPollingUnits, 
-  fetchWardsInZone,
   fetchWardsPaginated,
   fetchSystemLogs,
   exportLogs as exportLogsUtil,
@@ -59,7 +57,11 @@ export default function SystemAdminDashboard() {
   });
 
   const [zones, setZones] = useState<Zone[]>([]);
+  // All wards, used to populate assignment dropdowns. Kept separate from the
+  // paginated ward table so filtering one tab never truncates another tab's
+  // dropdown options.
   const [wards, setWards] = useState<Ward[]>([]);
+  const [wardList, setWardList] = useState<Ward[]>([]);
   const [pollingUnits, setPollingUnits] = useState<PollingUnit[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [logs, setLogs] = useState<any[]>([]);
@@ -79,8 +81,6 @@ export default function SystemAdminDashboard() {
   const [pollingUnitSearch, setPollingUnitSearch] = useState('');
   const [partySearch, setPartySearch] = useState('');
   const [selectedZone, setSelectedZone] = useState<string>('all');
-  const [selectedWard, setSelectedWard] = useState<string>('all');
-  const [showUnassigned, setShowUnassigned] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRole, setSelectedRole] = useState<string>('all');
 
@@ -97,10 +97,10 @@ export default function SystemAdminDashboard() {
   });
 
 
-  // Fetch all data on mount
+  // Fetch all data on mount. Polling units are loaded by PollingUnitsTab itself
+  // so that a single, filter-aware fetch is responsible for that table.
   useEffect(() => {
     loadAllData();
-    loadPollingUnits(1, { limit: 50 });
   }, []);
 
   const loadAllData = async (showToast = false) => {
@@ -165,7 +165,7 @@ export default function SystemAdminDashboard() {
         ...filters,
         limit: 10,
       });
-      setWards(data.data || []);
+      setWardList(data.data || []);
       setWardPagination(data.pagination || { page: 1, limit: 10, total: 0, totalPages: 0 });
     } catch (error) {
       toast({ title: "Error", description: "Failed to load wards", variant: "destructive" });
@@ -174,46 +174,30 @@ export default function SystemAdminDashboard() {
 
   // ✅ FIXED: loadPollingUnits with proper filter handling
   const loadPollingUnits = async (page: number, filters?: any) => {
-    console.log('📊 loadPollingUnits called with:', { page, filters });
-    
     try {
       // Build filters object
       const queryFilters: any = {
         limit: filters?.limit || 50,
       };
-      
-      // Use the selected zone from state if not provided in filters
-      const zoneId = filters?.zoneId || (selectedZone !== 'all' ? selectedZone : undefined);
-      const wardId = filters?.wardId || (selectedWard !== 'all' ? selectedWard : undefined);
-      
-      if (zoneId) {
-        queryFilters.zoneId = zoneId;
-        console.log('📍 Filtering by zone:', zoneId);
+
+      if (filters?.zoneId) {
+        queryFilters.zoneId = filters.zoneId;
       }
-      
-      if (wardId) {
-        queryFilters.wardId = wardId;
-        console.log('📍 Filtering by ward:', wardId);
+
+      if (filters?.wardId) {
+        queryFilters.wardId = filters.wardId;
       }
-      
+
       if (filters?.search) {
         queryFilters.search = filters.search;
       }
-      
+
       if (filters?.unassigned) {
         queryFilters.unassigned = true;
       }
-      
-      console.log('📤 Sending filters to API:', queryFilters);
-      
+
       const data = await fetchPollingUnits(API_BASE_URL, page, queryFilters);
-      
-      console.log('📥 API Response:', {
-        count: data.data?.length || 0,
-        total: data.pagination?.total || 0,
-        filters: data.filters
-      });
-      
+
       setPollingUnits(data.data || []);
       setPollingUnitPagination(data.pagination || { 
         page: page, 
@@ -228,26 +212,6 @@ export default function SystemAdminDashboard() {
         description: "Failed to load polling units", 
         variant: "destructive" 
       });
-    }
-  };
-
-  // ✅ FIXED: loadUnassignedPollingUnits
-  const loadUnassignedPollingUnits = async (page: number) => {
-    try {
-      const data = await fetchUnassignedPollingUnits(API_BASE_URL, page);
-      setPollingUnits(data.data || []);
-      setPollingUnitPagination(data.pagination || { page, limit: 10, total: 0, totalPages: 0 });
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to load unassigned polling units", variant: "destructive" });
-    }
-  };
-
-  const loadWardsInZone = async (zoneId: string) => {
-    try {
-      const data = await fetchWardsInZone(API_BASE_URL, zoneId);
-      setWards(data.wards || []);
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to load wards", variant: "destructive" });
     }
   };
 
@@ -297,6 +261,10 @@ export default function SystemAdminDashboard() {
       toast({ title: "Success", description: `${type} deleted successfully` });
       setDeleteDialog({ open: false, type: '', id: '', name: '' });
       await loadAllData();
+      // Refresh the paginated tables so a deleted row disappears immediately.
+      if (type === 'ward') await loadWardsPaginated(1);
+      if (type === 'pollingUnit') await loadPollingUnits(1, {});
+      if (type === 'zone') await loadWardsPaginated(1);
     } catch (error) {
       toast({ 
         title: "Error", 
@@ -510,16 +478,12 @@ export default function SystemAdminDashboard() {
 
           <TabsContent value="wards">
             <WardsTab
-              wards={wards}
+              wards={wardList}
               zones={zones}
               pagination={wardPagination}
               onPageChange={loadWardsPaginated}
-              onRefresh={() => {
-                loadAllData();
-                loadWardsPaginated(1);
-              }}
+              onRefresh={() => loadAllData()}
               onDelete={handleDelete}
-              onFetchWardsInZone={loadWardsInZone}
               onFetchWards={loadWardsPaginated}
               searchQuery={wardSearch}
               setSearchQuery={setWardSearch}
@@ -534,25 +498,15 @@ export default function SystemAdminDashboard() {
               wards={wards}
               zones={zones}
               pagination={pollingUnitPagination}
-              showUnassigned={showUnassigned}
-              onToggleUnassigned={() => {
-                setShowUnassigned(!showUnassigned);
-                if (!showUnassigned) {
-                  loadUnassignedPollingUnits(1);
-                } else {
-                  loadPollingUnits(1, {});
-                }
-              }}
               onPageChange={loadPollingUnits}
-              onRefresh={() => loadAllData()}
+              onRefresh={() => {
+                loadAllData();
+                loadPollingUnits(1, {});
+              }}
               onDelete={handleDelete}
               onFetchPollingUnits={loadPollingUnits}
               searchQuery={pollingUnitSearch}
               setSearchQuery={setPollingUnitSearch}
-              selectedZone={selectedZone}
-              setSelectedZone={setSelectedZone}
-              selectedWard={selectedWard}
-              setSelectedWard={setSelectedWard}
               getInitials={getInitials}
             />
           </TabsContent>

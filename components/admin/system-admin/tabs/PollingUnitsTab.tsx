@@ -1,5 +1,5 @@
 // components/admin/system-admin/tabs/PollingUnitsTab.tsx
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Card,
   CardContent,
@@ -56,24 +56,20 @@ import { CreatePollingUnitDialog } from '../dialogs/CreatePollingUnitDialog';
 import { EditPollingUnitDialog } from '../dialogs/EditPollingUnitDialog';
 import { ViewPollingUnitDialog } from '../dialogs/ViewPollingUnitDialog';
 import { PollingUnit, Zone, Ward, Pagination } from '../types';
+import { fetchWardsInZone } from '@/lib/system-admin/api';
+import { API_BASE_URL } from '@/lib/config';
 
 interface PollingUnitsTabProps {
   pollingUnits: PollingUnit[];
   wards: Ward[];
   zones: Zone[];
   pagination: Pagination;
-  showUnassigned: boolean;
-  onToggleUnassigned: () => void;
-  onPageChange: (page: number, filters?: any) => void;
+  onPageChange?: (page: number, filters?: any) => void;
   onRefresh: () => void;
   onDelete: (type: string, id: string, name: string) => void;
-  onFetchPollingUnits: (page: number, filters?: any) => void;
+  onFetchPollingUnits?: (page: number, filters?: any) => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
-  selectedZone: string;
-  setSelectedZone: (zone: string) => void;
-  selectedWard: string;
-  setSelectedWard: (ward: string) => void;
   getInitials: (name: string) => string;
 }
 
@@ -82,18 +78,12 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
   wards,
   zones,
   pagination,
-  showUnassigned,
-  onToggleUnassigned,
   onPageChange,
   onRefresh,
   onDelete,
   onFetchPollingUnits,
   searchQuery,
   setSearchQuery,
-  selectedZone,
-  setSelectedZone,
-  selectedWard,
-  setSelectedWard,
   getInitials,
 }) => {
   const [viewingPU, setViewingPU] = useState<PollingUnit | null>(null);
@@ -103,105 +93,89 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
   const [isEditPUOpen, setIsEditPUOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [localSearch, setLocalSearch] = useState(searchQuery);
-  
-  // Use ref to prevent infinite loops
-  const initialFetchDone = useRef(false);
-  const filterTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [limit, setLimit] = useState(50);
 
-  // Get filtered wards based on selected zone
-  const filteredWards = useMemo(() => {
-    if (selectedZone && selectedZone !== 'all') {
-      return wards.filter(w => w.zoneId === selectedZone || w.zone?.id === selectedZone);
-    }
-    return wards;
-  }, [wards, selectedZone]);
+  // This tab owns its own filter state so that filtering polling units never
+  // mutates (or is mutated by) the other tabs.
+  const [selectedZone, setSelectedZone] = useState('all');
+  const [selectedWard, setSelectedWard] = useState('all');
+  const [showUnassigned, setShowUnassigned] = useState(false);
+  const [zoneWards, setZoneWards] = useState<Ward[]>([]);
 
-  // Initial fetch - only once
+  const firstLoad = useRef(true);
+  const fetchRef = useRef(onFetchPollingUnits);
+  fetchRef.current = onFetchPollingUnits;
+
+  const buildFilters = (overrides: any = {}) => ({
+    search: localSearch || undefined,
+    zoneId: selectedZone !== 'all' ? selectedZone : undefined,
+    wardId: selectedWard !== 'all' ? selectedWard : undefined,
+    unassigned: showUnassigned || undefined,
+    limit,
+    ...overrides,
+  });
+
+  // Single, debounced fetch that runs once on mount and whenever any filter
+  // changes. The callback is held in a ref so parent re-renders do not
+  // re-trigger the effect.
   useEffect(() => {
-    if (!initialFetchDone.current && onFetchPollingUnits) {
-      initialFetchDone.current = true;
-      // Only fetch if no filters are applied
-      if (!searchQuery && selectedZone === 'all' && selectedWard === 'all' && !showUnassigned) {
-        onFetchPollingUnits(1, {});
-      }
-    }
-  }, [onFetchPollingUnits, searchQuery, selectedZone, selectedWard, showUnassigned]);
+    const fetch = fetchRef.current;
+    if (!fetch) return;
 
-  // Debounced search - only when localSearch changes
-  useEffect(() => {
-    if (filterTimeoutRef.current) {
-      clearTimeout(filterTimeoutRef.current);
-    }
-
-    filterTimeoutRef.current = setTimeout(() => {
-      if (localSearch !== searchQuery) {
-        setSearchQuery(localSearch);
-        onFetchPollingUnits(1, { 
-          search: localSearch,
-          zoneId: selectedZone !== 'all' ? selectedZone : undefined,
-          wardId: selectedWard !== 'all' ? selectedWard : undefined,
-        });
-      }
-    }, 500);
-
-    return () => {
-      if (filterTimeoutRef.current) {
-        clearTimeout(filterTimeoutRef.current);
-      }
-    };
-  }, [localSearch, selectedZone, selectedWard, onFetchPollingUnits, setSearchQuery]);
-
-  // Handle filter changes - only when specific filters change
-  const handleFilterChange = useCallback(() => {
-    const filters: any = {
-      search: searchQuery || localSearch,
+    const filters = {
+      search: localSearch || undefined,
       zoneId: selectedZone !== 'all' ? selectedZone : undefined,
       wardId: selectedWard !== 'all' ? selectedWard : undefined,
-      unassigned: showUnassigned,
+      unassigned: showUnassigned || undefined,
+      limit,
     };
-    console.log('🔍 Applying filters:', filters);
-    onFetchPollingUnits(1, filters);
-  }, [searchQuery, localSearch, selectedZone, selectedWard, showUnassigned, onFetchPollingUnits]);
 
-  // Only call handleFilterChange when specific dependencies change
+    if (firstLoad.current) {
+      firstLoad.current = false;
+      fetch(1, filters);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setSearchQuery(localSearch);
+      fetch(1, filters);
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [localSearch, selectedZone, selectedWard, showUnassigned, limit, setSearchQuery]);
+
+  // Load the wards for the selected zone so the ward dropdown is complete.
   useEffect(() => {
-    // Skip initial render
-    if (!initialFetchDone.current) return;
-    handleFilterChange();
-  }, [selectedZone, selectedWard, showUnassigned]);
+    let cancelled = false;
+    if (!selectedZone || selectedZone === 'all') {
+      setZoneWards([]);
+      return;
+    }
+    fetchWardsInZone(API_BASE_URL, selectedZone)
+      .then((res) => {
+        if (!cancelled) setZoneWards(res.wards || []);
+      })
+      .catch(() => {
+        if (!cancelled) setZoneWards([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedZone]);
 
   const handlePageChange = (newPage: number) => {
-    if (newPage < 1 || newPage > pagination.totalPages) return;
-    
-    const filters = {
-      search: searchQuery || localSearch,
-      zoneId: selectedZone !== 'all' ? selectedZone : undefined,
-      wardId: selectedWard !== 'all' ? selectedWard : undefined,
-      unassigned: showUnassigned,
-    };
-    onPageChange(newPage, filters);
+    if (!pagination || newPage < 1 || newPage > pagination.totalPages) return;
+    onPageChange?.(newPage, buildFilters());
   };
 
-  const handleLimitChange = (limit: string) => {
-    const newLimit = parseInt(limit);
-    const filters = {
-      search: searchQuery || localSearch,
-      zoneId: selectedZone !== 'all' ? selectedZone : undefined,
-      wardId: selectedWard !== 'all' ? selectedWard : undefined,
-      unassigned: showUnassigned,
-      limit: newLimit,
-    };
-    onFetchPollingUnits(1, filters);
+  const handleLimitChange = (value: string) => {
+    setLimit(parseInt(value));
   };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setSearchQuery(localSearch);
-    onFetchPollingUnits(1, { 
-      search: localSearch,
-      zoneId: selectedZone !== 'all' ? selectedZone : undefined,
-      wardId: selectedWard !== 'all' ? selectedWard : undefined,
-    });
+    fetchRef.current?.(1, buildFilters());
   };
 
   const clearFilters = () => {
@@ -209,12 +183,19 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
     setSearchQuery('');
     setSelectedZone('all');
     setSelectedWard('all');
-    onFetchPollingUnits(1, {});
+    setShowUnassigned(false);
   };
 
-  const hasActiveFilters = searchQuery || 
-    (selectedZone && selectedZone !== 'all') || 
-    (selectedWard && selectedWard !== 'all');
+  // Refresh the table with the currently active filters after a create/edit.
+  const handleDialogSuccess = () => {
+    onRefresh();
+    fetchRef.current?.(1, buildFilters());
+  };
+
+  const hasActiveFilters = !!searchQuery ||
+    (selectedZone && selectedZone !== 'all') ||
+    (selectedWard && selectedWard !== 'all') ||
+    showUnassigned;
 
   // Get active filter count
   const activeFilterCount = [
@@ -223,8 +204,8 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
     selectedWard !== 'all' ? 1 : 0,
   ].reduce((a, b) => a + b, 0);
 
-  const startItem = (pagination.page - 1) * pagination.limit + 1;
-  const endItem = Math.min(pagination.page * pagination.limit, pagination.total);
+  const startItem = pagination ? (pagination.page - 1) * pagination.limit + 1 : 1;
+  const endItem = pagination ? Math.min(pagination.page * pagination.limit, pagination.total) : pollingUnits.length;
 
   // Helper function to get zone name
   const getZoneName = (pu: PollingUnit): string => {
@@ -286,8 +267,7 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
                 <Button
                   variant={showUnassigned ? 'default' : 'outline'}
                   size="sm"
-                  onClick={onToggleUnassigned}
-                  className={showUnassigned ? 'bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100' : ''}
+                  onClick={() => setShowUnassigned((v) => !v)}
                 >
                   <Users className="h-4 w-4 mr-2" />
                   {showUnassigned ? 'Show All' : 'Unassigned'}
@@ -345,12 +325,6 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
                 value={selectedWard}
                 onValueChange={(value) => {
                   setSelectedWard(value);
-                  // When ward changes, fetch polling units with ward filter
-                  onFetchPollingUnits(1, { 
-                    wardId: value !== 'all' ? value : undefined,
-                    zoneId: selectedZone !== 'all' ? selectedZone : undefined,
-                    search: searchQuery || localSearch,
-                  });
                 }}
                 disabled={!selectedZone || selectedZone === 'all'}
               >
@@ -360,7 +334,7 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Wards</SelectItem>
-                  {filteredWards.map((ward) => (
+                  {zoneWards.map((ward) => (
                     <SelectItem key={ward.id} value={ward.id}>
                       {ward.name}
                       {ward.zone?.name && ` (${ward.zone.name})`}
@@ -394,7 +368,6 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
                       onClick={() => {
                         setLocalSearch('');
                         setSearchQuery('');
-                        handleFilterChange();
                       }}
                     />
                   </Badge>
@@ -413,7 +386,7 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
                 )}
                 {selectedWard !== 'all' && (
                   <Badge variant="secondary" className="flex items-center gap-1">
-                    Ward: {wards.find(w => w.id === selectedWard)?.name}
+                    Ward: {zoneWards.find(w => w.id === selectedWard)?.name}
                     <X 
                       className="h-3 w-3 cursor-pointer hover:text-destructive" 
                       onClick={() => setSelectedWard('all')}
@@ -648,7 +621,7 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
         onOpenChange={setIsCreatePUOpen}
         wards={wards}
         onSuccess={() => {
-          onRefresh();
+          handleDialogSuccess();
           setIsCreatePUOpen(false);
         }}
       />
@@ -658,7 +631,7 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
         onOpenChange={setIsEditPUOpen}
         pollingUnit={editingPU}
         onSuccess={() => {
-          onRefresh();
+          handleDialogSuccess();
           setIsEditPUOpen(false);
         }}
       />
