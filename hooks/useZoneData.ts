@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/use-toast';
 import { withTenantHeaders } from '@/lib/tenant';
 import { API_BASE_URL } from '@/lib/config';
+import { SERVER_OFFLINE_MESSAGE, isNetworkError } from '@/lib/messages';
 
 export interface ZoneStats {
   totalWards: number;
@@ -80,159 +81,28 @@ export interface ZoneData {
   votesSummary: VoteSummary[];
 }
 
-// Demo data for fallback
-const DEMO_ZONE_DATA: ZoneData = {
+// Neutral placeholder used until live data arrives. It is intentionally empty:
+// the dashboard must not present invented wards or vote tallies as if they were
+// real. An unreachable API is surfaced as an error instead.
+const EMPTY_ZONE_DATA: ZoneData = {
   stats: {
-    totalWards: 8,
-    totalPollingUnits: 180,
-    totalAgents: 175,
-    activeAgents: 162,
-    offlineAgents: 13,
-    totalResults: 145,
-    pendingResults: 28,
-    approvedResults: 110,
-    rejectedResults: 7,
-    totalIncidents: 23,
-    criticalIncidents: 4,
-    resultsProgress: 80,
+    totalWards: 0,
+    totalPollingUnits: 0,
+    totalAgents: 0,
+    activeAgents: 0,
+    offlineAgents: 0,
+    totalResults: 0,
+    pendingResults: 0,
+    approvedResults: 0,
+    rejectedResults: 0,
+    totalIncidents: 0,
+    criticalIncidents: 0,
+    resultsProgress: 0,
   },
-  wards: [
-    { 
-      id: '1', 
-      name: 'Ward 1', 
-      code: 'W-001', 
-      pollingUnits: 25, 
-      agents: 24,
-      activeAgents: 22,
-      resultsSubmitted: 20,
-      pendingResults: 3,
-      incidents: 2,
-      admin: 'Alice Johnson',
-      adminId: 'a1',
-      progress: 80
-    },
-    { 
-      id: '2', 
-      name: 'Ward 2', 
-      code: 'W-002', 
-      pollingUnits: 22, 
-      agents: 22,
-      activeAgents: 20,
-      resultsSubmitted: 18,
-      pendingResults: 4,
-      incidents: 1,
-      admin: 'Bob Smith',
-      adminId: 'a2',
-      progress: 82
-    },
-    { 
-      id: '3', 
-      name: 'Ward 3', 
-      code: 'W-003', 
-      pollingUnits: 28, 
-      agents: 27,
-      activeAgents: 25,
-      resultsSubmitted: 22,
-      pendingResults: 5,
-      incidents: 4,
-      admin: 'Carol White',
-      adminId: 'a3',
-      progress: 79
-    },
-    { 
-      id: '4', 
-      name: 'Ward 4', 
-      code: 'W-004', 
-      pollingUnits: 20, 
-      agents: 20,
-      activeAgents: 18,
-      resultsSubmitted: 16,
-      pendingResults: 3,
-      incidents: 3,
-      admin: 'David Brown',
-      adminId: 'a4',
-      progress: 80
-    },
-    { 
-      id: '5', 
-      name: 'Ward 5', 
-      code: 'W-005', 
-      pollingUnits: 24, 
-      agents: 23,
-      activeAgents: 21,
-      resultsSubmitted: 19,
-      pendingResults: 4,
-      incidents: 5,
-      admin: 'Eva Green',
-      adminId: 'a5',
-      progress: 79
-    },
-    { 
-      id: '6', 
-      name: 'Ward 6', 
-      code: 'W-006', 
-      pollingUnits: 18, 
-      agents: 18,
-      activeAgents: 17,
-      resultsSubmitted: 15,
-      pendingResults: 2,
-      incidents: 2,
-      admin: 'Frank Miller',
-      adminId: 'a6',
-      progress: 83
-    },
-    { 
-      id: '7', 
-      name: 'Ward 7', 
-      code: 'W-007', 
-      pollingUnits: 23, 
-      agents: 22,
-      activeAgents: 20,
-      resultsSubmitted: 18,
-      pendingResults: 4,
-      incidents: 3,
-      admin: 'Grace Lee',
-      adminId: 'a7',
-      progress: 78
-    },
-    { 
-      id: '8', 
-      name: 'Ward 8', 
-      code: 'W-008', 
-      pollingUnits: 20, 
-      agents: 19,
-      activeAgents: 19,
-      resultsSubmitted: 17,
-      pendingResults: 3,
-      incidents: 3,
-      admin: 'Henry Davis',
-      adminId: 'a8',
-      progress: 85
-    },
-  ],
-  wardAdmins: [
-    { id: 'a1', name: 'Alice Johnson', email: 'alice@example.com', ward: 'Ward 1', wardId: '1', status: 'Online', lastActive: '2 min ago', resultsReviewed: 45 },
-    { id: 'a2', name: 'Bob Smith', email: 'bob@example.com', ward: 'Ward 2', wardId: '2', status: 'Online', lastActive: '5 min ago', resultsReviewed: 38 },
-    { id: 'a3', name: 'Carol White', email: 'carol@example.com', ward: 'Ward 3', wardId: '3', status: 'Online', lastActive: '1 min ago', resultsReviewed: 52 },
-    { id: 'a4', name: 'David Brown', email: 'david@example.com', ward: 'Ward 4', wardId: '4', status: 'Offline', lastActive: '30 min ago', resultsReviewed: 28 },
-    { id: 'a5', name: 'Eva Green', email: 'eva@example.com', ward: 'Ward 5', wardId: '5', status: 'Online', lastActive: '3 min ago', resultsReviewed: 41 },
-    { id: 'a6', name: 'Frank Miller', email: 'frank@example.com', ward: 'Ward 6', wardId: '6', status: 'Online', lastActive: '8 min ago', resultsReviewed: 35 },
-    { id: 'a7', name: 'Grace Lee', email: 'grace@example.com', ward: 'Ward 7', wardId: '7', status: 'Online', lastActive: '4 min ago', resultsReviewed: 33 },
-    { id: 'a8', name: 'Henry Davis', email: 'henry@example.com', ward: 'Ward 8', wardId: '8', status: 'Online', lastActive: '1 min ago', resultsReviewed: 47 },
-  ],
-  incidents: [
-    { id: '1', type: 'Violence', ward: 'Ward 3', wardId: '3', pollingUnit: 'PU-012', reporter: 'Agent Mike', time: '15 min ago', severity: 'critical', status: 'pending' },
-    { id: '2', type: 'Disruption', ward: 'Ward 5', wardId: '5', pollingUnit: 'PU-045', reporter: 'Agent Sarah', time: '30 min ago', severity: 'high', status: 'investigating' },
-    { id: '3', type: 'Irregularity', ward: 'Ward 1', wardId: '1', pollingUnit: 'PU-003', reporter: 'Agent John', time: '45 min ago', severity: 'medium', status: 'investigating' },
-    { id: '4', type: 'Fraud', ward: 'Ward 7', wardId: '7', pollingUnit: 'PU-078', reporter: 'Agent Lisa', time: '1 hour ago', severity: 'critical', status: 'pending' },
-    { id: '5', type: 'Disruption', ward: 'Ward 4', wardId: '4', pollingUnit: 'PU-034', reporter: 'Agent Tom', time: '1.5 hours ago', severity: 'high', status: 'resolved' },
-  ],
-  votesSummary: [
-    { party: 'APC', votes: 45230, percentage: 42, color: 'bg-blue-500' },
-    { party: 'PDP', votes: 38450, percentage: 36, color: 'bg-green-500' },
-    { party: 'LP', votes: 15890, percentage: 15, color: 'bg-red-500' },
-    { party: 'NNPP', votes: 7520, percentage: 7, color: 'bg-purple-500' },
-  ]
+  wards: [],
+  wardAdmins: [],
+  incidents: [],
+  votesSummary: [],
 };
 
 
@@ -264,13 +134,13 @@ export function useZoneData(options?: {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [usingDemoData, setUsingDemoData] = useState(false);
-  const [zoneData, setZoneData] = useState<ZoneData>(DEMO_ZONE_DATA);
+  const [zoneData, setZoneData] = useState<ZoneData>(EMPTY_ZONE_DATA);
 
   const fetchZoneData = useCallback(async (showToastMessage = false) => {
     if (!user || !user.zoneId) {
       console.log('No zone ID found for user');
-      setUsingDemoData(true);
+      setZoneData(EMPTY_ZONE_DATA);
+      setError('Zone data is not available for your account.');
       setLoading(false);
       return;
     }
@@ -282,7 +152,6 @@ export function useZoneData(options?: {
         setLoading(true);
       }
       setError(null);
-      setUsingDemoData(false);
 
       const token = localStorage.getItem('authToken');
       if (!token) {
@@ -352,7 +221,6 @@ export function useZoneData(options?: {
       );
 
       setZoneData(transformedData);
-      setUsingDemoData(false);
 
       if (showToastMessage) {
         toast({
@@ -363,15 +231,16 @@ export function useZoneData(options?: {
 
     } catch (error) {
       console.error('Error fetching zone data:', error);
-      setZoneData(DEMO_ZONE_DATA);
-      setUsingDemoData(true);
-      setError('Failed to load zone data');
-      
+      const offline = isNetworkError(error);
+      const message = offline ? SERVER_OFFLINE_MESSAGE : 'Failed to load zone data';
+      setZoneData(EMPTY_ZONE_DATA);
+      setError(message);
+
       if (showToastMessage) {
         toast({
-          title: "Demo Mode",
-          description: "Showing sample zone data",
-          variant: "default",
+          title: offline ? 'Server Offline' : 'Error',
+          description: message,
+          variant: "destructive",
         });
       }
     } finally {
@@ -387,11 +256,6 @@ export function useZoneData(options?: {
     pollingUnitsData: any[],
     wardAdminsData: any[]
   ): ZoneData => {
-    // If no real data, return demo data
-    if (!statsData && wardsData.length === 0 && incidentsData.length === 0) {
-      return DEMO_ZONE_DATA;
-    }
-
     // Calculate statistics
     const totalPollingUnits = pollingUnitsData.length || statsData?.stats?.totalPollingUnits || 0;
     const totalResults = pollingUnitsData.filter((pu: any) => pu.resultStatus && pu.resultStatus !== 'Not Submitted').length;
@@ -452,8 +316,10 @@ export function useZoneData(options?: {
       };
     });
 
-    // Calculate votes summary (this would come from a separate endpoint ideally)
-    const votesSummary: VoteSummary[] = DEMO_ZONE_DATA.votesSummary;
+    // Votes summary only if the stats endpoint provides it; never fabricated.
+    const votesSummary: VoteSummary[] = Array.isArray(statsData?.votesSummary)
+      ? statsData.votesSummary
+      : [];
 
     return {
       stats: {
@@ -494,7 +360,6 @@ export function useZoneData(options?: {
     loading,
     refreshing,
     error,
-    usingDemoData,
     refreshZoneData: (showToast = false) => fetchZoneData(showToast),
   };
 }

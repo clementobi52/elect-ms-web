@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/use-toast';
 import { withTenantHeaders } from '@/lib/tenant';
 import { API_BASE_URL } from '@/lib/config';
+import { SERVER_OFFLINE_MESSAGE, isNetworkError } from '@/lib/messages';
 
 export interface VoteSummary {
   party: string;
@@ -21,15 +22,6 @@ export interface VoteSummaryData {
   totalVotes: number;
   lastUpdated: string | null;
 }
-
-// Demo data for fallback when backend is unavailable
-const DEMO_VOTE_SUMMARIES: VoteSummary[] = [
-  { party: 'APC', votes: 45230, percentage: 42, color: 'bg-blue-500' },
-  { party: 'PDP', votes: 38450, percentage: 36, color: 'bg-green-500' },
-  { party: 'LP', votes: 15890, percentage: 15, color: 'bg-red-500' },
-  { party: 'NNPP', votes: 7520, percentage: 7, color: 'bg-purple-500' },
-];
-
 
 // Party color mapping (fallback if backend doesn't provide colors)
 const PARTY_COLORS: Record<string, string> = {
@@ -49,18 +41,18 @@ export function useVoteSummary(options?: {
 }) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [summaries, setSummaries] = useState<VoteSummary[]>(DEMO_VOTE_SUMMARIES);
+  const [summaries, setSummaries] = useState<VoteSummary[]>([]);
   const [totalVotes, setTotalVotes] = useState<number>(0);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [usingDemoData, setUsingDemoData] = useState(false);
 
   const fetchVoteSummary = useCallback(async (showToastMessage = false) => {
     if (!user || !user.zoneId) {
       console.log('No zone ID found for user');
-      setUsingDemoData(true);
+      setSummaries([]);
+      setTotalVotes(0);
       setLoading(false);
       return;
     }
@@ -72,7 +64,6 @@ export function useVoteSummary(options?: {
         setLoading(true);
       }
       setError(null);
-      setUsingDemoData(false);
 
       const token = localStorage.getItem('authToken');
       if (!token) {
@@ -94,7 +85,7 @@ export function useVoteSummary(options?: {
         const data = await response.json();
         console.log('📦 Vote summary response:', data);
 
-        if (data.success && data.summary && data.summary.length > 0) {
+        if (data.success && Array.isArray(data.summary)) {
           // Process the summaries to ensure they have all required fields
           const processedSummaries = data.summary.map((item: any) => ({
             party: item.party || 'Unknown Party',
@@ -108,7 +99,6 @@ export function useVoteSummary(options?: {
           setSummaries(processedSummaries);
           setTotalVotes(data.totalVotes || 0);
           setLastUpdated(data.timestamp || new Date().toISOString());
-          setUsingDemoData(false);
 
           if (showToastMessage) {
             toast({
@@ -144,16 +134,17 @@ export function useVoteSummary(options?: {
 
     } catch (error) {
       console.error('❌ Error fetching vote summary:', error);
-      setSummaries(DEMO_VOTE_SUMMARIES);
-      setTotalVotes(DEMO_VOTE_SUMMARIES.reduce((sum, item) => sum + item.votes, 0));
-      setUsingDemoData(true);
-      setError('Failed to load vote summary');
-      
+      const offline = isNetworkError(error);
+      const message = offline ? SERVER_OFFLINE_MESSAGE : 'Failed to load vote summary';
+      setSummaries([]);
+      setTotalVotes(0);
+      setError(message);
+
       if (showToastMessage) {
         toast({
-          title: "Demo Mode",
-          description: "Showing sample vote summary",
-          variant: "default",
+          title: offline ? 'Server Offline' : 'Error',
+          description: message,
+          variant: "destructive",
         });
       }
     } finally {
@@ -191,7 +182,6 @@ export function useVoteSummary(options?: {
     loading,
     refreshing,
     error,
-    usingDemoData,
     refreshVoteSummary,
   };
 }

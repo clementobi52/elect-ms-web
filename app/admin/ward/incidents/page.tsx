@@ -20,7 +20,6 @@ export default function WardIncidentsPage() {
     incidents, 
     loading, 
     refreshing, 
-    usingDemoData, 
     error, 
     refreshIncidents, 
     updateIncident 
@@ -89,7 +88,7 @@ export default function WardIncidentsPage() {
         subtitle="Managing incidents in your ward"
       />
       <div className="flex-1 p-6">
-        {error && !usingDemoData && (
+        {error && (
           <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-2">
             <AlertCircle className="h-5 w-5 text-red-600" />
             <p className="text-red-600">{error}</p>

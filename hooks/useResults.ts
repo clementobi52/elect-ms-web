@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/use-toast';
 import { withTenantHeaders } from '@/lib/tenant';
 import { API_BASE_URL } from '@/lib/config';
+import { SERVER_OFFLINE_MESSAGE, isNetworkError } from '@/lib/messages';
 
 export interface ElectionResult {
   id: string;
@@ -25,95 +26,7 @@ export interface ElectionResult {
   reviewedAt?: string;
 }
 
-// Demo data with proper party names
-const DEMO_RESULTS: ElectionResult[] = [
-  {
-    id: '1',
-    pollingUnit: 'Polling Unit 1 - Central Primary School',
-    pollingUnitId: 'pu1',
-    agent: 'John Doe',
-    agentId: 'agent1',
-    submittedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    status: 'Pending',
-    resultFileUrl: 'https://example.com/result1.jpg',
-    wardName: 'Ward 1',
-    zoneName: 'Zone A',
-    votes: [
-      { party: 'APC', votes: 150, partyId: 'party1' },
-      { party: 'PDP', votes: 120, partyId: 'party2' },
-      { party: 'LP', votes: 80, partyId: 'party3' }
-    ]
-  },
-  {
-    id: '2',
-    pollingUnit: 'Polling Unit 2 - Community Hall',
-    pollingUnitId: 'pu2',
-    agent: 'Jane Smith',
-    agentId: 'agent2',
-    submittedAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-    status: 'Verified',
-    resultFileUrl: 'https://example.com/result2.jpg',
-    wardName: 'Ward 1',
-    zoneName: 'Zone A',
-    votes: [
-      { party: 'APC', votes: 180, partyId: 'party1' },
-      { party: 'PDP', votes: 90, partyId: 'party2' },
-      { party: 'LP', votes: 110, partyId: 'party3' }
-    ]
-  },
-  {
-    id: '3',
-    pollingUnit: 'Polling Unit 3 - Market Square',
-    pollingUnitId: 'pu3',
-    agent: 'Mike Johnson',
-    agentId: 'agent3',
-    submittedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    status: 'Rejected',
-    resultFileUrl: 'https://example.com/result3.jpg',
-    wardName: 'Ward 2',
-    zoneName: 'Zone A',
-    votes: [
-      { party: 'APC', votes: 120, partyId: 'party1' },
-      { party: 'PDP', votes: 150, partyId: 'party2' },
-      { party: 'LP', votes: 60, partyId: 'party3' }
-    ],
-    reviewComment: 'Results inconsistent with voter turnout'
-  },
-  {
-    id: '4',
-    pollingUnit: 'Polling Unit 4 - Health Center',
-    pollingUnitId: 'pu4',
-    agent: 'Sarah Brown',
-    agentId: 'agent4',
-    submittedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-    status: 'Pending',
-    wardName: 'Ward 2',
-    zoneName: 'Zone B',
-    votes: [
-      { party: 'APC', votes: 200, partyId: 'party1' },
-      { party: 'PDP', votes: 180, partyId: 'party2' },
-      { party: 'LP', votes: 95, partyId: 'party3' }
-    ]
-  },
-  {
-    id: '5',
-    pollingUnit: 'Polling Unit 5 - Town Hall',
-    pollingUnitId: 'pu5',
-    agent: 'David Wilson',
-    agentId: 'agent5',
-    submittedAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
-    status: 'Verified',
-    wardName: 'Ward 3',
-    zoneName: 'Zone B',
-    votes: [
-      { party: 'APC', votes: 145, partyId: 'party1' },
-      { party: 'PDP', votes: 130, partyId: 'party2' },
-      { party: 'LP', votes: 115, partyId: 'party3' },
-      { party: 'NNPP', votes: 45, partyId: 'party4' }
-    ]
-  }
-];
-
+// Enhanced transformResult function
 
 // Enhanced helper function to extract image URL from various possible fields
 const extractImageUrl = (item: any): string | null | undefined => {
@@ -272,7 +185,6 @@ export function useResults(options?: {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [usingDemoData, setUsingDemoData] = useState(false);
 
   const fetchResults = useCallback(async (showToastMessage = false) => {
     if (!user) return;
@@ -284,7 +196,6 @@ export function useResults(options?: {
         setLoading(true);
       }
       setError(null);
-      setUsingDemoData(false);
 
       const token = localStorage.getItem('authToken');
       if (!token) {
@@ -316,11 +227,9 @@ export function useResults(options?: {
             resultsData = data;
           }
 
-          if (resultsData.length > 0) {
+          if (Array.isArray(resultsData)) {
             const transformedResults = resultsData.map(transformResult);
-            console.log('Transformed results:', transformedResults);
             setResults(transformedResults);
-            setUsingDemoData(false);
             
             if (showToastMessage) {
               toast({
@@ -349,10 +258,9 @@ export function useResults(options?: {
           const data = await response.json();
           let resultsData = data.results || data.data || (Array.isArray(data) ? data : []);
           
-          if (resultsData.length > 0) {
+          if (Array.isArray(resultsData)) {
             const transformedResults = resultsData.map(transformResult);
             setResults(transformedResults);
-            setUsingDemoData(false);
             
             if (showToastMessage) {
               toast({
@@ -377,10 +285,9 @@ export function useResults(options?: {
           const data = await response.json();
           let resultsData = data.results || data.data || (Array.isArray(data) ? data : []);
           
-          if (resultsData.length > 0) {
+          if (Array.isArray(resultsData)) {
             const transformedResults = resultsData.map(transformResult);
             setResults(transformedResults);
-            setUsingDemoData(false);
             
             if (showToastMessage) {
               toast({
@@ -419,15 +326,10 @@ export function useResults(options?: {
           
           console.log('Ward Admin resultsData:', resultsData);
           
-          if (resultsData.length > 0) {
-            // Log first result to check structure
-            console.log('First result sample:', JSON.stringify(resultsData[0], null, 2));
-            
+          if (Array.isArray(resultsData)) {
             const transformedResults = resultsData.map(transformResult);
-            console.log('Transformed results:', transformedResults);
             
             setResults(transformedResults);
-            setUsingDemoData(false);
             
             if (showToastMessage) {
               toast({
@@ -436,37 +338,28 @@ export function useResults(options?: {
               });
             }
             return;
-          } else {
-            console.log('No results data found in response');
           }
         } else {
           console.log('Response not OK:', response.status, response.statusText);
         }
       }
 
-      // If we get here, no valid data was received
-      console.log('No data received, using demo data');
-      setResults(DEMO_RESULTS);
-      setUsingDemoData(true);
-      
-      if (showToastMessage) {
-        toast({
-          title: "Demo Mode",
-          description: "Showing sample results",
-        });
-      }
+      // No endpoint matched the user's role, or the request was not OK.
+      setResults([]);
+      setError('Failed to load results');
 
     } catch (error) {
       console.error('Error fetching results:', error);
-      setResults(DEMO_RESULTS);
-      setUsingDemoData(true);
-      setError('Failed to load results');
-      
+      const offline = isNetworkError(error);
+      const message = offline ? SERVER_OFFLINE_MESSAGE : 'Failed to load results';
+      setResults([]);
+      setError(message);
+
       if (showToastMessage) {
         toast({
-          title: "Demo Mode",
-          description: "Showing sample results",
-          variant: "default",
+          title: offline ? 'Server Offline' : 'Error',
+          description: message,
+          variant: "destructive",
         });
       }
     } finally {
@@ -578,7 +471,6 @@ export function useResults(options?: {
     loading,
     refreshing,
     error,
-    usingDemoData,
     refreshResults: (showToast = false) => fetchResults(showToast),
     approveResult,
     rejectResult

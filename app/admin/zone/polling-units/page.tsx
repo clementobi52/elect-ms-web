@@ -80,6 +80,7 @@ import AdminHeader from '@/components/admin/AdminHeader';
 import { apiClient } from '@/lib/api/client';
 import { getSocket, onConnectionChange, onSocketMessage, sendSocketMessage } from '@/lib/socket-service';
 import { Progress } from '@/components/ui/progress';
+import { SERVER_OFFLINE_MESSAGE, isNetworkError } from '@/lib/messages';
 
 // Type Definitions
 interface PollingUnit {
@@ -542,10 +543,11 @@ export default function ZonePollingUnitsPage() {
       }
     } catch (error) {
       console.error('Error fetching polling units:', error);
-      setError('Failed to load polling units');
+      const message = isNetworkError(error) ? SERVER_OFFLINE_MESSAGE : 'Failed to load polling units';
+      setError(message);
       toast({
-        title: "Error",
-        description: "Failed to load polling units",
+        title: isNetworkError(error) ? 'Server Offline' : 'Error',
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -577,10 +579,12 @@ export default function ZonePollingUnitsPage() {
 
     } catch (error) {
       console.error('Error fetching data:', error);
-      setError('Failed to load polling units');
+      const offline = isNetworkError(error);
+      const message = offline ? SERVER_OFFLINE_MESSAGE : 'Failed to load polling units';
+      setError(message);
       toast({
-        title: "Error",
-        description: "Failed to load polling units",
+        title: offline ? 'Server Offline' : 'Error',
+        description: message,
         variant: "destructive",
       });
     } finally {

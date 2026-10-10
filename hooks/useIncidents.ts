@@ -3,58 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/use-toast';
 import { incidentsApi, Incident } from '@/lib/api/incidents';
-
-// Demo data for fallback when backend is unavailable
-const DEMO_INCIDENTS: Incident[] = [
-  {
-    id: '1',
-    type: 'Violence',
-    description: 'Physical altercation between voters at polling unit',
-    pollingUnitName: 'Polling Unit 1',
-    wardName: 'Ward 1',
-    zoneName: 'Zone A',
-    reporterName: 'John Doe',
-    severity: 'Critical',
-    status: 'Pending',
-    time: '2 hours ago'
-  },
-  {
-    id: '2',
-    type: 'Disruption',
-    description: 'Minor disruption due to technical issues with card reader',
-    pollingUnitName: 'Polling Unit 2',
-    wardName: 'Ward 1',
-    zoneName: 'Zone A',
-    reporterName: 'Jane Smith',
-    severity: 'High',
-    status: 'Investigating',
-    time: '5 hours ago'
-  },
-  {
-    id: '3',
-    type: 'Irregularity',
-    description: 'Suspected ballot stuffing at polling unit',
-    pollingUnitName: 'Polling Unit 3',
-    wardName: 'Ward 2',
-    zoneName: 'Zone B',
-    reporterName: 'Mike Johnson',
-    severity: 'Critical',
-    status: 'Pending',
-    time: '1 day ago'
-  },
-  {
-    id: '4',
-    type: 'Malfunction',
-    description: 'Voting machine malfunction at polling station',
-    pollingUnitName: 'Polling Unit 4',
-    wardName: 'Ward 2',
-    zoneName: 'Zone B',
-    reporterName: 'Sarah Brown',
-    severity: 'Medium',
-    status: 'Resolved',
-    time: '2 days ago'
-  }
-];
+import { SERVER_OFFLINE_MESSAGE, isNetworkError } from '@/lib/messages';
 
 export function useIncidents(options?: {
   autoRefresh?: boolean;
@@ -66,7 +15,6 @@ export function useIncidents(options?: {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [usingDemoData, setUsingDemoData] = useState(false);
 
   const formatTimeAgo = (dateString?: string): string => {
     if (!dateString) return 'Unknown';
@@ -96,7 +44,6 @@ export function useIncidents(options?: {
         setLoading(true);
       }
       setError(null);
-      setUsingDemoData(false);
 
       let response;
       
@@ -111,10 +58,8 @@ export function useIncidents(options?: {
         // Ward Admin sees incidents in their ward
         response = await incidentsApi.getIncidentsByWard(user.wardId);
       } else {
-        // Fallback to demo data
-        setIncidents(DEMO_INCIDENTS);
-        setUsingDemoData(true);
-        setLoading(false);
+        setIncidents([]);
+        setError('Incidents are not available for your role.');
         return;
       }
 
@@ -126,7 +71,6 @@ export function useIncidents(options?: {
         }));
         
         setIncidents(processedIncidents);
-        setUsingDemoData(false);
         setError(null);
         
         if (showToastMessage) {
@@ -136,26 +80,27 @@ export function useIncidents(options?: {
           });
         }
       } else {
-        // Fallback to demo data
-        setIncidents(DEMO_INCIDENTS);
-        setUsingDemoData(true);
+        setIncidents([]);
+        setError('Failed to load incidents');
         if (showToastMessage) {
           toast({
-            title: "Demo Mode",
-            description: "Showing sample incident data",
+            title: "Error",
+            description: "Failed to load incidents",
+            variant: "destructive",
           });
         }
       }
     } catch (error) {
       console.error('Error fetching incidents:', error);
-      setIncidents(DEMO_INCIDENTS);
-      setUsingDemoData(true);
-      setError('Failed to load incidents');
+      const offline = isNetworkError(error);
+      const message = offline ? SERVER_OFFLINE_MESSAGE : 'Failed to load incidents';
+      setIncidents([]);
+      setError(message);
       if (showToastMessage) {
         toast({
-          title: "Demo Mode",
-          description: "Showing sample incident data",
-          variant: "default",
+          title: offline ? 'Server Offline' : 'Error',
+          description: message,
+          variant: "destructive",
         });
       }
     } finally {
@@ -220,7 +165,6 @@ export function useIncidents(options?: {
     loading,
     refreshing,
     error,
-    usingDemoData,
     refreshIncidents: (showToast = false) => fetchIncidents(showToast),
     updateIncident,
     formatTimeAgo,

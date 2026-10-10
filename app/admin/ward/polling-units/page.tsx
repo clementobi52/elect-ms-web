@@ -7,7 +7,7 @@ import AdminHeader from '@/components/admin/AdminHeader';
 import { AlertCircle } from 'lucide-react';
 
 export default function WardPollingUnitsPage() {
-  const { pollingUnits, loading, refreshing, usingDemoData, error, refreshPollingUnits } = usePollingUnits({
+  const { pollingUnits, loading, refreshing, error, refreshPollingUnits } = usePollingUnits({
     autoRefresh: true,
     refreshInterval: 30000
   });
@@ -19,7 +19,7 @@ export default function WardPollingUnitsPage() {
         subtitle="Managing polling units in your ward"
       />
       <div className="flex-1 p-6">
-        {error && !usingDemoData && (
+        {error && (
           <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-2">
             <AlertCircle className="h-5 w-5 text-red-600" />
             <p className="text-red-600">{error}</p>
@@ -32,7 +32,6 @@ export default function WardPollingUnitsPage() {
           showWard={false}
           showZone={false}
           role="ward"
-          description={usingDemoData ? "Using demo data - Backend connection not available" : undefined}
         />
       </div>
     </div>

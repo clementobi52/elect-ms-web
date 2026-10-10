@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/use-toast';
 import { withTenantHeaders } from '@/lib/tenant';
 import { API_BASE_URL } from '@/lib/config';
+import { SERVER_OFFLINE_MESSAGE, isNetworkError } from '@/lib/messages';
 
 export interface PollingUnit {
   id: string;
@@ -24,70 +25,41 @@ export interface PollingUnit {
   resultStatus?: string;
 }
 
-// Demo data for fallback when backend is unavailable
-const DEMO_POLLING_UNITS: PollingUnit[] = [
-  {
-    id: '1',
-    name: 'Polling Unit 1 - Central Primary School',
-    code: 'PU-001',
-    registeredVoters: 450,
-    agentName: 'John Doe',
-    agentStatus: 'Online',
-    location: { latitude: 6.5244, longitude: 3.3792 },
-    wardName: 'Ward 1',
-    zoneName: 'Zone A',
-    resultStatus: 'Submitted'
-  },
-  {
-    id: '2',
-    name: 'Polling Unit 2 - Community Hall',
-    code: 'PU-002',
-    registeredVoters: 380,
-    agentName: 'Jane Smith',
-    agentStatus: 'Online',
-    location: { latitude: 6.5245, longitude: 3.3793 },
-    wardName: 'Ward 1',
-    zoneName: 'Zone A',
-    resultStatus: 'Pending'
-  },
-  {
-    id: '3',
-    name: 'Polling Unit 3 - Market Square',
-    code: 'PU-003',
-    registeredVoters: 520,
-    agentName: 'Mike Johnson',
-    agentStatus: 'Offline',
-    location: { latitude: 6.5246, longitude: 3.3794 },
-    wardName: 'Ward 2',
-    zoneName: 'Zone A',
-    resultStatus: 'Not Submitted'
-  },
-  {
-    id: '4',
-    name: 'Polling Unit 4 - Health Center',
-    code: 'PU-004',
-    registeredVoters: 290,
-    agentName: 'Sarah Brown',
-    agentStatus: 'Online',
-    location: { latitude: 6.5247, longitude: 3.3795 },
-    wardName: 'Ward 2',
-    zoneName: 'Zone B',
-    resultStatus: 'Verified'
-  },
-  {
-    id: '5',
-    name: 'Polling Unit 5 - Town Hall',
-    code: 'PU-005',
-    registeredVoters: 610,
-    agentName: 'Unassigned',
-    agentStatus: 'Offline',
-    location: { latitude: 6.5248, longitude: 3.3796 },
-    wardName: 'Ward 3',
-    zoneName: 'Zone B',
-    resultStatus: 'Not Submitted'
-  }
-];
+/**
+ * Shown when the API cannot be reached at all. There is deliberately no demo
+ * data: a fabricated polling unit that looks real is worse than an honest
+ * outage, because an operator cannot tell the two apart.
+ */
+export { SERVER_OFFLINE_MESSAGE };
 
+type RawUnit = Record<string, any>;
+
+function transformUnit(unit: RawUnit, fallbackWardId?: string | null): PollingUnit {
+  const lat = unit.latitude;
+  const lng = unit.longitude;
+  return {
+    id: unit.id,
+    name: unit.name,
+    code: unit.code || `PU-${String(unit.id).slice(0, 4)}`,
+    registeredVoters: unit.registeredVoters || 0,
+    agentName: unit.agentName || unit.agent?.name || 'Unassigned',
+    agentId: unit.agentId || unit.agent?.id,
+    agentStatus: unit.agentStatus || unit.agent?.status || 'Offline',
+    location: lat && lng ? { latitude: lat, longitude: lng } : { latitude: 0, longitude: 0 },
+    wardId: unit.wardId || fallbackWardId || undefined,
+    wardName: unit.wardName || unit.ward?.name,
+    zoneId: unit.zoneId || unit.zone?.id,
+    zoneName: unit.zoneName || unit.zone?.name,
+    resultStatus: unit.resultStatus || 'Not Submitted',
+  };
+}
+
+function extractUnits(data: any): RawUnit[] | null {
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.data)) return data.data;
+  if (data && Array.isArray(data.pollingUnits)) return data.pollingUnits;
+  return null;
+}
 
 export function usePollingUnits(options?: {
   autoRefresh?: boolean;
@@ -99,14 +71,6 @@ export function usePollingUnits(options?: {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [usingDemoData, setUsingDemoData] = useState(false);
-
-  const formatLocation = (lat?: number, lng?: number): { latitude: number; longitude: number } => {
-    if (lat && lng) {
-      return { latitude: lat, longitude: lng };
-    }
-    return { latitude: 0, longitude: 0 };
-  };
 
   const fetchPollingUnits = useCallback(async (showToastMessage = false) => {
     if (!user) return;
@@ -118,7 +82,6 @@ export function usePollingUnits(options?: {
         setLoading(true);
       }
       setError(null);
-      setUsingDemoData(false);
 
       const token = localStorage.getItem('authToken');
       if (!token) {
@@ -126,223 +89,56 @@ export function usePollingUnits(options?: {
       }
 
       let url = '';
-      let response;
-
-      // Determine which endpoint to use based on user role
       if (user.role === 'System Admin') {
-        // System Admin sees all polling units
         url = `${API_BASE_URL}/admin/polling-units`;
-        console.log('System Admin fetching all polling units from:', url);
-        
-        response = await fetch(url, {
-          headers: withTenantHeaders({ Authorization: `Bearer ${token}` })
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          console.log('System Admin response:', data);
-          
-          // Handle different response structures
-          let units = [];
-          if (data.data && Array.isArray(data.data)) {
-            units = data.data;
-          } else if (data.pollingUnits && Array.isArray(data.pollingUnits)) {
-            units = data.pollingUnits;
-          } else if (Array.isArray(data)) {
-            units = data;
-          }
-
-          if (Array.isArray(units)) {
-            const transformedUnits = units.map((unit: any) => ({
-              id: unit.id,
-              name: unit.name,
-              code: unit.code || `PU-${unit.id.slice(0, 4)}`,
-              registeredVoters: unit.registeredVoters || 0,
-              agentName: unit.agentName || unit.agent?.name || 'Unassigned',
-              agentId: unit.agentId || unit.agent?.id,
-              agentStatus: unit.agentStatus || unit.agent?.status || 'Offline',
-              location: formatLocation(unit.latitude, unit.longitude),
-              wardId: unit.wardId,
-              wardName: unit.wardName || unit.ward?.name,
-              zoneId: unit.zoneId || unit.zone?.id,
-              zoneName: unit.zoneName || unit.zone?.name,
-              resultStatus: unit.resultStatus || 'Not Submitted'
-            }));
-            
-            setPollingUnits(transformedUnits);
-            setUsingDemoData(false);
-            
-            if (showToastMessage) {
-              toast({
-                title: "Success",
-                description: `Loaded ${transformedUnits.length} polling units`,
-              });
-            }
-            return;
-          }
-        }
-      } 
-      else if (user.role === 'Situation Room Admin') {
-        // Situation Room sees polling units across assigned zones
-        if (user.zoneId) {
-          url = `${API_BASE_URL}/admin/zone/${user.zoneId}/polling-units`;
-        } else {
-          url = `${API_BASE_URL}/admin/polling-units`;
-        }
-        
-        console.log('Situation Room fetching polling units from:', url);
-        
-        response = await fetch(url, {
-          headers: withTenantHeaders({ Authorization: `Bearer ${token}` })
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          let units = data.pollingUnits || data.data || (Array.isArray(data) ? data : []);
-          
-          if (Array.isArray(units)) {
-            const transformedUnits = units.map((unit: any) => ({
-              id: unit.id,
-              name: unit.name,
-              code: unit.code || `PU-${unit.id.slice(0, 4)}`,
-              registeredVoters: unit.registeredVoters || 0,
-              agentName: unit.agentName || unit.agent?.name || 'Unassigned',
-              agentId: unit.agentId || unit.agent?.id,
-              agentStatus: unit.agentStatus || unit.agent?.status || 'Offline',
-              location: formatLocation(unit.latitude, unit.longitude),
-              wardId: unit.wardId,
-              wardName: unit.wardName || unit.ward?.name,
-              zoneId: unit.zoneId || unit.zone?.id,
-              zoneName: unit.zoneName || unit.zone?.name,
-              resultStatus: unit.resultStatus || 'Not Submitted'
-            }));
-            
-            setPollingUnits(transformedUnits);
-            setUsingDemoData(false);
-            
-            if (showToastMessage) {
-              toast({
-                title: "Success",
-                description: `Loaded ${transformedUnits.length} polling units`,
-              });
-            }
-            return;
-          }
-        }
-      }
-      else if (user.role === 'Zone Admin' && user.zoneId) {
-        // Zone Admin sees polling units in their zone
-        url = `${API_BASE_URL}/admin/zone/${user.zoneId}/polling-units`;
-        
-        console.log('Zone Admin fetching polling units from:', url);
-        
-        response = await fetch(url, {
-          headers: withTenantHeaders({ Authorization: `Bearer ${token}` })
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          let units = data.pollingUnits || data.data || (Array.isArray(data) ? data : []);
-          
-          if (Array.isArray(units)) {
-            const transformedUnits = units.map((unit: any) => ({
-              id: unit.id,
-              name: unit.name,
-              code: unit.code || `PU-${unit.id.slice(0, 4)}`,
-              registeredVoters: unit.registeredVoters || 0,
-              agentName: unit.agentName || unit.agent?.name || 'Unassigned',
-              agentId: unit.agentId || unit.agent?.id,
-              agentStatus: unit.agentStatus || unit.agent?.status || 'Offline',
-              location: formatLocation(unit.latitude, unit.longitude),
-              wardId: unit.wardId,
-              wardName: unit.wardName || unit.ward?.name,
-              zoneId: unit.zoneId || unit.zone?.id,
-              zoneName: unit.zoneName || unit.zone?.name,
-              resultStatus: unit.resultStatus || 'Not Submitted'
-            }));
-            
-            setPollingUnits(transformedUnits);
-            setUsingDemoData(false);
-            
-            if (showToastMessage) {
-              toast({
-                title: "Success",
-                description: `Loaded ${transformedUnits.length} polling units`,
-              });
-            }
-            return;
-          }
-        }
-      }
-      else if (user.role === 'Ward Admin' && user.wardId) {
-        // Ward Admin sees polling units in their ward
+      } else if (user.role === 'Situation Room Admin' || user.role === 'Zone Admin') {
+        url = user.zoneId
+          ? `${API_BASE_URL}/admin/zone/${user.zoneId}/polling-units`
+          : `${API_BASE_URL}/admin/polling-units`;
+      } else if (user.role === 'Ward Admin' && user.wardId) {
         url = `${API_BASE_URL}/admin/ward/${user.wardId}/polling-units`;
-        
-        console.log('Ward Admin fetching polling units from:', url);
-        
-        response = await fetch(url, {
-          headers: withTenantHeaders({ Authorization: `Bearer ${token}` })
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          // Handle both array response and object with data property
-          let units = Array.isArray(data) ? data : (data.data || data.pollingUnits || []);
-          
-          if (Array.isArray(units)) {
-            const transformedUnits = units.map((unit: any) => ({
-              id: unit.id,
-              name: unit.name,
-              code: unit.code || `PU-${unit.id.slice(0, 4)}`,
-              registeredVoters: unit.registeredVoters || 0,
-              agentName: unit.agentName || 'Unassigned',
-              agentId: unit.agentId,
-              agentStatus: unit.agentStatus || 'Offline',
-              location: formatLocation(unit.latitude, unit.longitude),
-              wardId: unit.wardId || user.wardId,
-              wardName: unit.wardName,
-              resultStatus: unit.resultStatus || 'Not Submitted'
-            }));
-            
-            setPollingUnits(transformedUnits);
-            setUsingDemoData(false);
-            
-            if (showToastMessage) {
-              toast({
-                title: "Success",
-                description: `Loaded ${transformedUnits.length} polling units`,
-              });
-            }
-            return;
-          }
-        }
+      } else {
+        throw new Error('Your account is not linked to a ward or zone');
       }
 
-      // If we get here, the request was not successful or the shape was wrong.
-      console.error('Failed to load polling units; no demo fallback');
+      const response = await fetch(url, {
+        headers: withTenantHeaders({ Authorization: `Bearer ${token}` }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+      const units = extractUnits(data);
+      if (units === null) {
+        throw new Error('Unexpected response from the server');
+      }
+
+      const transformed = units.map((unit) => transformUnit(unit, user.wardId));
+      setPollingUnits(transformed);
+      setError(null);
+
+      if (showToastMessage) {
+        toast({
+          title: 'Success',
+          description: `Loaded ${transformed.length} polling units`,
+        });
+      }
+    } catch (err) {
+      // Every failure is surfaced plainly. We never substitute sample data, so
+      // an unreachable server reads as an outage rather than as an empty ward.
+      const isOffline = isNetworkError(err);
+      const message = isOffline ? SERVER_OFFLINE_MESSAGE : 'Failed to load polling units';
+      console.error('Error fetching polling units:', err);
       setPollingUnits([]);
-      setUsingDemoData(false);
-      setError('Failed to load polling units');
-      
-      if (showToastMessage) {
-        toast({
-          title: "Error",
-          description: "Failed to load polling units",
-          variant: "destructive",
-        });
-      }
+      setError(message);
 
-    } catch (error) {
-      console.error('Error fetching polling units:', error);
-      setPollingUnits(DEMO_POLLING_UNITS);
-      setUsingDemoData(true);
-      setError('Backend unavailable; showing demo data');
-      
       if (showToastMessage) {
         toast({
-          title: "Demo Mode",
-          description: "Backend connection failed; showing sample polling units",
-          variant: "default",
+          title: isOffline ? 'Server Offline' : 'Error',
+          description: message,
+          variant: 'destructive',
         });
       }
     } finally {
@@ -358,7 +154,7 @@ export function usePollingUnits(options?: {
       const interval = setInterval(() => {
         fetchPollingUnits(false);
       }, options.refreshInterval || 30000);
-      
+
       return () => clearInterval(interval);
     }
   }, [fetchPollingUnits, options?.autoRefresh, options?.refreshInterval]);
@@ -368,7 +164,6 @@ export function usePollingUnits(options?: {
     loading,
     refreshing,
     error,
-    usingDemoData,
-    refreshPollingUnits: (showToast = false) => fetchPollingUnits(showToast)
+    refreshPollingUnits: (showToast = false) => fetchPollingUnits(showToast),
   };
 }

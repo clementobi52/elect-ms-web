@@ -82,6 +82,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import AdminHeader from '@/components/admin/AdminHeader';
 import { withTenantHeaders } from '@/lib/tenant';
 import { API_BASE_URL } from '@/lib/config';
+import { SERVER_OFFLINE_MESSAGE, isNetworkError } from '@/lib/messages';
 import {
   fetchPollingUnits,
   fetchUnassignedPollingUnits,
@@ -438,10 +439,12 @@ const fetchStatsData = useCallback(async () => {
       }
     } catch (error) {
       console.error('Error fetching polling units:', error);
-      setError('Failed to load polling units');
+      const offline = isNetworkError(error);
+      const message = offline ? SERVER_OFFLINE_MESSAGE : 'Failed to load polling units';
+      setError(message);
       toast({
-        title: "Error",
-        description: "Failed to load polling units",
+        title: offline ? 'Server Offline' : 'Error',
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -469,10 +472,12 @@ const fetchStatsData = useCallback(async () => {
       ]);
     } catch (error) {
       console.error('Error fetching data:', error);
-      setError('Failed to load data');
+      const offline = isNetworkError(error);
+      const message = offline ? SERVER_OFFLINE_MESSAGE : 'Failed to load data';
+      setError(message);
       toast({
-        title: "Error",
-        description: "Failed to load data",
+        title: offline ? 'Server Offline' : 'Error',
+        description: message,
         variant: "destructive",
       });
     } finally {

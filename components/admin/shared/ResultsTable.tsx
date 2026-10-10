@@ -31,7 +31,6 @@ import {
   Shield,
   MapPin,
   FileText,
-  AlertCircle,
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
@@ -85,7 +84,7 @@ const getPartyColor = (party: string) => {
   return partyColors[party] || { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200' };
 };
 
-// Common Nigerian political parties for demo data
+// Common Nigerian political parties
 const PARTY_ABBREVIATIONS: Record<string, string> = {
   'APC': 'All Progressives Congress',
   'PDP': 'Peoples Democratic Party',
@@ -232,19 +231,8 @@ export function ResultsTable({
     return votes.reduce((sum, v) => sum + (v.votes || 0), 0);
   };
 
-  // Check if using demo data
-  const isUsingDemoData = results.length > 0 && results[0]?.id?.length < 5; // Simple heuristic
-
   return (
     <div className="space-y-6">
-      {/* Demo data warning */}
-      {isUsingDemoData && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-center gap-2">
-          <AlertCircle className="h-5 w-5 text-yellow-600" />
-          <p className="text-yellow-600">Using demo data - Backend connection not available</p>
-        </div>
-      )}
-
       {/* Role-specific header */}
       <div className={`${roleBadge.bg} border rounded-lg p-4 flex items-center gap-3`}>
         <RoleIcon className={`h-5 w-5 ${roleBadge.text}`} />

@@ -81,6 +81,7 @@ import { apiClient } from '@/lib/api/client';
 import { getSocket, onConnectionChange, onSocketMessage, sendSocketMessage } from '@/lib/socket-service';
 import { withTenantHeaders } from '@/lib/tenant';
 import { API_BASE_URL } from '@/lib/config';
+import { SERVER_OFFLINE_MESSAGE, isNetworkError } from '@/lib/messages';
 
 // UUID validation
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -165,7 +166,6 @@ export default function ZonalAdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [usingDemoData, setUsingDemoData] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [unsubscribeConnection, setUnsubscribeConnection] = useState<(() => void) | null>(null);
   const [unsubscribeMessages, setUnsubscribeMessages] = useState<(() => void) | null>(null);
@@ -772,8 +772,26 @@ export default function ZonalAdminDashboard() {
 
     } catch (error) {
       console.error('Error fetching data:', error);
-      setError('Failed to load dashboard data');
-      loadDemoData();
+      const offline = isNetworkError(error);
+      setError(offline ? SERVER_OFFLINE_MESSAGE : 'Failed to load dashboard data');
+      setStats({
+        totalWards: 0,
+        totalPollingUnits: 0,
+        totalAgents: 0,
+        activeAgents: 0,
+        totalResults: 0,
+        pendingResults: 0,
+        approvedResults: 0,
+        rejectedResults: 0,
+        totalIncidents: 0,
+        criticalIncidents: 0,
+        resultsProgress: 0,
+      });
+      setWards([]);
+      setWardAdmins([]);
+      setIncidents([]);
+      setVotesSummary([]);
+      setTotalVotes(0);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -797,47 +815,6 @@ export default function ZonalAdminDashboard() {
     }
   };
 
-  // Load demo data for fallback
-  const loadDemoData = () => {
-    setUsingDemoData(true);
-    setStats({
-      totalWards: 5,
-      totalPollingUnits: 45,
-      totalAgents: 38,
-      activeAgents: 29,
-      totalResults: 32,
-      pendingResults: 8,
-      approvedResults: 20,
-      rejectedResults: 4,
-      totalIncidents: 12,
-      criticalIncidents: 3,
-      resultsProgress: 71,
-    });
-
-    setWards([
-      { id: '1', name: 'Ward 1', code: 'W001', pollingUnits: 8, agents: 5, activeAgents: 4, resultsSubmitted: 6, pendingResults: 2, incidents: 2, adminName: 'John Doe', progress: 75 },
-      { id: '2', name: 'Ward 2', code: 'W002', pollingUnits: 6, agents: 4, activeAgents: 3, resultsSubmitted: 4, pendingResults: 1, incidents: 1, adminName: 'Jane Smith', progress: 67 },
-      { id: '3', name: 'Ward 3', code: 'W003', pollingUnits: 4, agents: 3, activeAgents: 2, resultsSubmitted: 2, pendingResults: 0, incidents: 0, adminName: 'Bob Johnson', progress: 50 },
-    ]);
-
-    setWardAdmins([
-      { id: '1', name: 'John Doe', email: 'john@example.com', wardId: '1', wardName: 'Ward 1', status: 'Online', lastActive: '2 min ago', resultsReviewed: 12 },
-      { id: '2', name: 'Jane Smith', email: 'jane@example.com', wardId: '2', wardName: 'Ward 2', status: 'Offline', lastActive: '1 hour ago', resultsReviewed: 8 },
-    ]);
-
-    setIncidents([
-      { id: '1', type: 'Violence', ward: 'Ward 1', pollingUnit: 'PU-001', reporter: 'Agent 1', severity: 'critical', status: 'Investigating', time: '2 hours ago' },
-      { id: '2', type: 'Fraud', ward: 'Ward 2', pollingUnit: 'PU-003', reporter: 'Agent 2', severity: 'high', status: 'Pending', time: '5 hours ago' },
-    ]);
-
-    setVotesSummary([
-      { party: 'APC', votes: 4500, percentage: 45, color: 'bg-blue-500' },
-      { party: 'PDP', votes: 3200, percentage: 32, color: 'bg-green-500' },
-      { party: 'LP', votes: 1800, percentage: 18, color: 'bg-red-500' },
-    ]);
-    setTotalVotes(9500);
-  };
-
   // Initial load
   useEffect(() => {
     if (user?.zoneId) {
@@ -856,7 +833,6 @@ export default function ZonalAdminDashboard() {
 
   // Handle refresh
   const handleRefresh = async () => {
-    setUsingDemoData(false);
     setWards([]);
     setWardPage(1);
     await fetchData(false);
@@ -1061,24 +1037,16 @@ export default function ZonalAdminDashboard() {
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-bold">Overview</h2>
             <Badge variant="outline" className="ml-2">
-              {usingDemoData ? 'Demo Mode' : (isConnected ? 'Live Updates' : 'Offline')}
+              {isConnected ? 'Live Updates' : 'Offline'}
             </Badge>
           </div>
         </div>
 
         {/* Error Message */}
-        {error && !usingDemoData && (
+        {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-red-600" />
             <p className="text-red-600">{error}</p>
-          </div>
-        )}
-
-        {/* Demo Mode Warning */}
-        {usingDemoData && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-yellow-600" />
-            <p className="text-yellow-600">Using demo data - Backend connection not available</p>
           </div>
         )}
 
@@ -1201,7 +1169,7 @@ export default function ZonalAdminDashboard() {
                 <CardTitle>Vote Summary (Approved Results)</CardTitle>
                 <CardDescription>
                   Aggregated votes from all approved results in your zone
-                  {lastUpdated && !usingDemoData && (
+                  {lastUpdated && (
                     <span className="block text-xs mt-1">
                       Last updated: {new Date(lastUpdated).toLocaleString()}
                     </span>

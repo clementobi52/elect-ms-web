@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/use-toast';
 import { withTenantHeaders } from '@/lib/tenant';
 import { API_BASE_URL } from '@/lib/config';
+import { SERVER_OFFLINE_MESSAGE, isNetworkError } from '@/lib/messages';
 
 interface Agent {
   id: string;
@@ -35,7 +36,6 @@ export function useAgents(options?: {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [usingDemoData, setUsingDemoData] = useState(false);
 
 
   const fetchAgents = useCallback(async (showToastMessage = false) => {
@@ -69,7 +69,6 @@ export function useAgents(options?: {
         url = `${API_BASE_URL}/admin/ward/${user.wardId}/agents`;
       } else {
         setAgents([]);
-        setUsingDemoData(false);
         setError('Agents are not available for your role.');
         return;
       }
@@ -119,7 +118,6 @@ export function useAgents(options?: {
         });
 
         setAgents(processedAgents);
-        setUsingDemoData(false);
         setError(null);
         
         if (showToastMessage) {
@@ -133,7 +131,6 @@ export function useAgents(options?: {
         try { detail = await response.text(); } catch {}
         console.error(`Agents request failed: HTTP ${response.status}`, detail);
         setAgents([]);
-        setUsingDemoData(false);
         setError(`Failed to load agents (HTTP ${response.status})`);
         if (showToastMessage) {
           toast({
@@ -145,13 +142,13 @@ export function useAgents(options?: {
       }
     } catch (error) {
       console.error('Error fetching agents:', error);
+      const message = isNetworkError(error) ? SERVER_OFFLINE_MESSAGE : 'Failed to load agents';
       setAgents([]);
-      setUsingDemoData(false);
-      setError('Failed to load agents');
+      setError(message);
       if (showToastMessage) {
         toast({
-          title: "Error",
-          description: "Failed to load agents",
+          title: isNetworkError(error) ? 'Server Offline' : 'Error',
+          description: message,
           variant: "destructive",
         });
       }
@@ -178,7 +175,6 @@ export function useAgents(options?: {
     loading,
     refreshing,
     error,
-    usingDemoData,
     refreshAgents: (showToast = false) => fetchAgents(showToast)
   };
 }

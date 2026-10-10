@@ -7,15 +7,14 @@ import AdminHeader from '@/components/admin/AdminHeader';
 import { AlertCircle } from 'lucide-react';
 
 export default function WardResultsPage() {
-  const { 
-    results, 
-    loading, 
-    refreshing, 
-    usingDemoData, 
-    error, 
+  const {
+    results,
+    loading,
+    refreshing,
+    error,
     refreshResults,
     approveResult,
-    rejectResult 
+    rejectResult
   } = useResults({
     autoRefresh: true,
     refreshInterval: 30000 // Refresh every 30 seconds
@@ -30,8 +29,8 @@ export default function WardResultsPage() {
       
       <div className="flex-1 p-6">
         {/* Error Message */}
-        {error && !usingDemoData && (
-          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-2">
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-2">
             <AlertCircle className="h-5 w-5 text-red-600" />
             <p className="text-red-600">{error}</p>
           </div>
@@ -48,14 +47,11 @@ export default function WardResultsPage() {
           showZone={false}
           role="ward"
           title="Ward Election Results"
-          description={usingDemoData 
-            ? "Using demo data - Backend connection not available. Showing sample results for preview." 
-            : "Review and manage election results from polling units in your ward"
-          }
+          description="Review and manage election results from polling units in your ward"
         />
 
         {/* Auto-refresh indicator */}
-        {!usingDemoData && !loading && (
+        {!loading && (
           <div className="mt-4 text-xs text-muted-foreground text-right">
             {refreshing ? (
               <span className="inline-flex items-center">
