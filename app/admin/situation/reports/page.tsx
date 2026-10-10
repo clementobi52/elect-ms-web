@@ -217,6 +217,7 @@ export default function SituationRoomReportsPage() {
   const router = useRouter();
   const { user } = useAuth();
   const { toast } = useToast();
+  const scopeLabel = (user?.role as string) === 'System Admin' ? 'System Administration' : 'Situation Room';
 
   // State
   const [reports, setReports] = useState<Report[]>([]);
@@ -641,7 +642,7 @@ export default function SituationRoomReportsPage() {
     return (
       <div className="flex flex-col min-h-screen">
         <AdminHeader 
-          title="📄 Situation Room - Reports"
+          title={`📄 ${scopeLabel} - Reports`}
           subtitle="Generate and manage reports"
         />
         <div className="flex-1 container p-4 md:p-6 space-y-6">
@@ -663,7 +664,7 @@ export default function SituationRoomReportsPage() {
   return (
     <div className="flex flex-col min-h-screen">
       <AdminHeader 
-        title="📄 Situation Room - Reports"
+        title={`📄 ${scopeLabel} - Reports`}
         subtitle={`Generate and manage reports ${!isConnected ? '🔴 Offline' : '🟢 Live'}`}
       />
 
