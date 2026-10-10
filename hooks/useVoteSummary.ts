@@ -58,10 +58,11 @@ export function useVoteSummary(options?: {
     }
 
     try {
+      // Only a manual refresh flips the spinner. The initial mount already starts
+      // with loading=true; a background poll must not re-enter the full-page
+      // loading state or the page flashes back to the loader every interval.
       if (showToastMessage) {
         setRefreshing(true);
-      } else {
-        setLoading(true);
       }
       setError(null);
 
