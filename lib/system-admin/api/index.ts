@@ -46,7 +46,7 @@ export const fetchAllData = async (API_BASE_URL: string) => {
     fetch(`${API_BASE_URL}/admin/polling-units?limit=1000`, {
       headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
     }),
-    fetch(`${API_BASE_URL}/admin/system/system/stats`, {
+    fetch(`${API_BASE_URL}/admin/system/stats`, {
       headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
     })
   ]);
@@ -55,7 +55,7 @@ export const fetchAllData = async (API_BASE_URL: string) => {
   let wards = [];
   let pollingUnits = [];
   let users = [];
-  let stats = {};
+  let stats: any = {};
 
   if (zonesRes.ok) {
     const zonesData = await zonesRes.json();
@@ -79,19 +79,51 @@ export const fetchAllData = async (API_BASE_URL: string) => {
 
   if (statsRes.ok) {
     const statsData = await statsRes.json();
-    stats = statsData.stats || statsData || {};
-    
-    // ✅ Ensure we have all the stats fields
-    if (!stats.totalResults) {
-      const resultsCount = pollingUnits.filter((pu: any) => pu.resultStatus).length;
-      const verifiedCount = pollingUnits.filter((pu: any) => pu.resultStatus === 'Verified').length;
-      const pendingCount = pollingUnits.filter((pu: any) => pu.resultStatus === 'Pending').length;
-      const rejectedCount = pollingUnits.filter((pu: any) => pu.resultStatus === 'Rejected').length;
-      
-      stats.totalResults = resultsCount;
-      stats.verifiedResults = verifiedCount;
-      stats.pendingResults = pendingCount;
-      stats.rejectedResults = rejectedCount;
+    const raw = statsData.stats || statsData || {};
+
+    // The endpoint (GET /admin/system/stats) returns { totals, breakdown }.
+    // The dashboard reads a flat shape, so flatten it here. Flat responses from
+    // other deployments are passed through unchanged.
+    if (raw.totals || raw.breakdown) {
+      const totals = raw.totals || {};
+      const roles = raw.breakdown?.usersByRole || {};
+      const resultStatuses = raw.breakdown?.resultsByStatus || {};
+      const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+
+      stats = {
+        totalUsers: totals.users || 0,
+        totalZones: totals.zones || 0,
+        totalWards: totals.wards || 0,
+        totalPollingUnits: totals.pollingUnits || 0,
+        totalAgents: roles['Polling Agent'] || 0,
+        totalWardAdmins: roles['Ward Admin'] || 0,
+        totalZoneAdmins: roles['Zone Admin'] || 0,
+        situationRoomUsers: roles['Situation Room Admin'] || 0,
+        systemAdmins: roles['System Admin'] || 0,
+        activeUsers: (users as any[]).filter(
+          (u: any) => u.updatedAt && new Date(u.updatedAt).getTime() > fiveMinutesAgo
+        ).length,
+        pendingApprovals: resultStatuses['Pending'] || 0,
+        totalResults: totals.results || 0,
+        verifiedResults: resultStatuses['Verified'] || 0,
+        pendingResults: resultStatuses['Pending'] || 0,
+        rejectedResults: resultStatuses['Rejected'] || 0,
+      };
+    } else {
+      stats = raw;
+
+      // ✅ Ensure we have all the stats fields
+      if (!stats.totalResults) {
+        const resultsCount = pollingUnits.filter((pu: any) => pu.resultStatus).length;
+        const verifiedCount = pollingUnits.filter((pu: any) => pu.resultStatus === 'Verified').length;
+        const pendingCount = pollingUnits.filter((pu: any) => pu.resultStatus === 'Pending').length;
+        const rejectedCount = pollingUnits.filter((pu: any) => pu.resultStatus === 'Rejected').length;
+
+        stats.totalResults = resultsCount;
+        stats.verifiedResults = verifiedCount;
+        stats.pendingResults = pendingCount;
+        stats.rejectedResults = rejectedCount;
+      }
     }
   }
 
@@ -812,8 +844,8 @@ export const deleteParty = async (API_BASE_URL: string, id: string) => {
  */
 export const fetchSystemStats = async (API_BASE_URL: string) => {
   const token = localStorage.getItem('authToken');
-  const response = await fetch(`${API_BASE_URL}/admin/system/system/stats`, {
-    headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
+  const response = await fetch(`${API_BASE_URL}/admin/system/stats`, {
+    headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` }),
   });
   
   if (response.ok) {
