@@ -269,13 +269,12 @@ export default function AdminUsersPage() {
 
 
   const roleOptions = [
-    { value: 'System Admin', label: 'System Admin' },
-    { value: 'Situation Room Admin', label: 'Situation Room Admin' },
-    { value: 'State Admin', label: 'State Admin' },
-    { value: 'LGA Admin', label: 'LGA Admin' },
-    { value: 'Zone Admin', label: 'Zone Admin' },
-    { value: 'Ward Admin', label: 'Ward Admin' },
     { value: 'Polling Agent', label: 'Polling Agent' },
+    { value: 'Ward Admin', label: 'Ward Admin' },
+    { value: 'LGA Admin', label: 'LGA Admin' },
+    { value: 'State Admin', label: 'State Admin' },
+    { value: 'Situation Room Admin', label: 'Situation Room Admin' },
+    { value: 'System Admin', label: 'System Admin' },
   ];
 
   // ============================================
@@ -739,7 +738,6 @@ export default function AdminUsersPage() {
     const situationRoom = users.filter(u => u.role === 'Situation Room Admin').length;
     const stateAdmins = users.filter(u => u.role === 'State Admin').length;
     const lgaAdmins = users.filter(u => u.role === 'LGA Admin').length;
-    const zoneAdmins = users.filter(u => u.role === 'Zone Admin').length;
     const wardAdmins = users.filter(u => u.role === 'Ward Admin').length;
     const pollingAgents = users.filter(u => u.role === 'Polling Agent').length;
     const active = users.filter(u => u.status === 'Active' || !u.status).length;
@@ -750,7 +748,6 @@ export default function AdminUsersPage() {
       situationRoom,
       stateAdmins,
       lgaAdmins,
-      zoneAdmins,
       wardAdmins,
       pollingAgents,
       active,
@@ -876,20 +873,6 @@ export default function AdminUsersPage() {
                 </div>
                 <div className="h-10 w-10 rounded-full bg-blue-200 flex items-center justify-center">
                   <Eye className="h-5 w-5 text-blue-700" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-green-50 to-green-100/50 border-green-200">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-green-700 font-medium">Zone Admins</p>
-                  <p className="text-2xl font-bold text-green-900">{formatNumber(stats.zoneAdmins)}</p>
-                </div>
-                <div className="h-10 w-10 rounded-full bg-green-200 flex items-center justify-center">
-                  <MapPin className="h-5 w-5 text-green-700" />
                 </div>
               </div>
             </CardContent>
@@ -1411,23 +1394,6 @@ export default function AdminUsersPage() {
                   </div>
                 )}
 
-                {formData.role === 'Zone Admin' && (
-                  <div>
-                    <Label htmlFor="zone">Zone *</Label>
-                    <select
-                      id="zone"
-                      className="w-full mt-1 px-3 py-2 bg-background border rounded-md"
-                      value={formData.zoneId}
-                      onChange={(e) => setFormData({ ...formData, zoneId: e.target.value })}
-                    >
-                      <option value="">Select a zone...</option>
-                      {zones.map((zone) => (
-                        <option key={zone.id} value={zone.id}>{zone.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
                 {formData.role === 'State Admin' && (
                   <div>
                     <Label htmlFor="state">State *</Label>
@@ -1613,23 +1579,6 @@ export default function AdminUsersPage() {
                       <option value="">Select a ward...</option>
                       {wards.map((ward) => (
                         <option key={ward.id} value={ward.id}>{ward.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {formData.role === 'Zone Admin' && (
-                  <div>
-                    <Label htmlFor="editZone">Zone</Label>
-                    <select
-                      id="editZone"
-                      className="w-full mt-1 px-3 py-2 bg-background border rounded-md"
-                      value={formData.zoneId}
-                      onChange={(e) => setFormData({ ...formData, zoneId: e.target.value })}
-                    >
-                      <option value="">Select a zone...</option>
-                      {zones.map((zone) => (
-                        <option key={zone.id} value={zone.id}>{zone.name}</option>
                       ))}
                     </select>
                   </div>
