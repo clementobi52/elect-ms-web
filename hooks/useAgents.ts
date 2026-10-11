@@ -6,6 +6,13 @@ import { withTenantHeaders } from '@/lib/tenant';
 import { API_BASE_URL } from '@/lib/config';
 import { SERVER_OFFLINE_MESSAGE, isNetworkError } from '@/lib/messages';
 import { resolveAdminScope, scopeApiBase } from '@/lib/scope';
+import { getSocket, onConnectionChange, onSocketMessage, sendSocketMessage } from '@/lib/socket-service';
+
+function toCoord(value: any): number | undefined {
+  if (value === null || value === undefined || value === '') return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
 
 interface Agent {
   id: string;
@@ -21,7 +28,7 @@ interface Agent {
   lastKnownLocation?: {
     latitude: number;
     longitude: number;
-  };
+  } | null;
   resultsSubmitted?: number;
   status?: 'Online' | 'Offline';
   lastActive?: string;
@@ -98,6 +105,19 @@ export function useAgents(options?: {
             else lastActiveText = `${Math.floor(diffMins / 1440)} days ago`;
           }
 
+          // The ward/scope endpoints nest coordinates under `lastKnownLocation`;
+          // the system users endpoint returns them as flat lastKnownLatitude /
+          // lastKnownLongitude columns. Accept either and coerce to numbers.
+          const rawLocation =
+            agent.lastKnownLocation ??
+            (toCoord(agent.lastKnownLatitude) !== undefined && toCoord(agent.lastKnownLongitude) !== undefined
+              ? { latitude: toCoord(agent.lastKnownLatitude)!, longitude: toCoord(agent.lastKnownLongitude)! }
+              : null);
+          const latitude = toCoord(rawLocation?.latitude);
+          const longitude = toCoord(rawLocation?.longitude);
+          const lastKnownLocation =
+            latitude !== undefined && longitude !== undefined ? { latitude, longitude } : null;
+
           return {
             id: agent.id,
             name: agent.name,
@@ -112,10 +132,7 @@ export function useAgents(options?: {
             status,
             lastActive: lastActiveText,
             resultsSubmitted: agent.resultsSubmitted || 0,
-            lastKnownLocation: agent.lastKnownLatitude && agent.lastKnownLongitude ? {
-              latitude: agent.lastKnownLatitude,
-              longitude: agent.lastKnownLongitude
-            } : null
+            lastKnownLocation
           };
         });
 
@@ -171,6 +188,83 @@ export function useAgents(options?: {
       return () => clearInterval(interval);
     }
   }, [fetchAgents, options?.autoRefresh, options?.refreshInterval]);
+
+  // Real-time location updates over the shared socket. The ward room receives a
+  // `ward-data-update` on every agent fix (the mobile app emits one roughly
+  // every 10s or 10m), so merging those moves the map markers without waiting
+  // for the next poll. Scoped to a ward because that is the room the server
+  // broadcasts the coordinate payload to.
+  useEffect(() => {
+    if (!user) return;
+    const scope = resolveAdminScope(user);
+    if (!scope || scope.kind !== 'ward') return;
+
+    const wardId = scope.id;
+    const join = () => sendSocketMessage('join-ward', { wardId });
+
+    const applyWardAgents = (incoming: any[]) => {
+      if (!Array.isArray(incoming) || incoming.length === 0) return;
+
+      setAgents(prev => {
+        // The initial REST load owns the full record shape (polling unit name
+        // etc). Until it lands, skip the partial socket rows.
+        if (prev.length === 0) return prev;
+
+        const updates = new Map<string, Partial<Agent>>();
+        incoming.forEach(raw => {
+          const lat = toCoord(raw.lastKnownLatitude);
+          const lng = toCoord(raw.lastKnownLongitude);
+          const status: Agent['status'] | undefined =
+            raw.status === 'Online' || raw.status === 'Offline' ? raw.status : undefined;
+
+          updates.set(raw.id, {
+            status,
+            updatedAt: raw.updatedAt,
+            lastKnownLocation:
+              lat !== undefined && lng !== undefined ? { latitude: lat, longitude: lng } : undefined,
+          });
+        });
+
+        return prev.map(agent => {
+          const update = updates.get(agent.id);
+          if (!update) return agent;
+          return {
+            ...agent,
+            status: update.status ?? agent.status,
+            updatedAt: update.updatedAt ?? agent.updatedAt,
+            lastKnownLocation: update.lastKnownLocation ?? agent.lastKnownLocation,
+          };
+        });
+      });
+    };
+
+    const unsubConnection = onConnectionChange(connected => {
+      if (connected) join();
+    });
+
+    const unsubMessages = onSocketMessage((event, data) => {
+      if (event === 'ward-data-update') {
+        applyWardAgents(data?.agents);
+      } else if (event === 'agent-status-update' && data?.agentId) {
+        const status: Agent['status'] = data.status === 'Online' ? 'Online' : 'Offline';
+        setAgents(prev => prev.map(agent =>
+          agent.id === data.agentId
+            ? { ...agent, status, updatedAt: data.timestamp ?? agent.updatedAt }
+            : agent
+        ));
+      }
+    });
+
+    // The socket may already be connected (e.g. navigating from the dashboard),
+    // in which case no connection change fires and we join up front.
+    const socket = getSocket();
+    if (socket?.connected) join();
+
+    return () => {
+      unsubConnection();
+      unsubMessages();
+    };
+  }, [user]);
 
   return {
     agents,

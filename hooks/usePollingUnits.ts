@@ -35,9 +35,19 @@ export { SERVER_OFFLINE_MESSAGE };
 
 type RawUnit = Record<string, any>;
 
+function toCoord(value: any): number | undefined {
+  if (value === null || value === undefined || value === '') return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 function transformUnit(unit: RawUnit, fallbackWardId?: string | null): PollingUnit {
-  const lat = unit.latitude;
-  const lng = unit.longitude;
+  // Endpoints differ: some return top-level latitude/longitude, others nest them
+  // under a `location` object. Accept either, and coerce strings (DECIMAL) to
+  // numbers so Mapbox gets valid coordinates.
+  const lat = toCoord(unit.latitude) ?? toCoord(unit.location?.latitude);
+  const lng = toCoord(unit.longitude) ?? toCoord(unit.location?.longitude);
+  const hasLocation = lat !== undefined && lng !== undefined;
   return {
     id: unit.id,
     name: unit.name,
@@ -46,7 +56,7 @@ function transformUnit(unit: RawUnit, fallbackWardId?: string | null): PollingUn
     agentName: unit.agentName || unit.agent?.name || 'Unassigned',
     agentId: unit.agentId || unit.agent?.id,
     agentStatus: unit.agentStatus || unit.agent?.status || 'Offline',
-    location: lat && lng ? { latitude: lat, longitude: lng } : { latitude: 0, longitude: 0 },
+    location: hasLocation ? { latitude: lat!, longitude: lng! } : { latitude: 0, longitude: 0 },
     wardId: unit.wardId || fallbackWardId || undefined,
     wardName: unit.wardName || unit.ward?.name,
     zoneId: unit.zoneId || unit.zone?.id,

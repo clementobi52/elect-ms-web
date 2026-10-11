@@ -59,7 +59,10 @@ interface PollingUnitsMapProps {
 function hasCoords(
   loc?: { latitude: number; longitude: number } | null
 ): loc is { latitude: number; longitude: number } {
-  return !!loc && !isNaN(loc.latitude) && !isNaN(loc.longitude) && (loc.latitude !== 0 || loc.longitude !== 0);
+  if (!loc) return false;
+  const lat = Number(loc.latitude);
+  const lng = Number(loc.longitude);
+  return Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0);
 }
 
 export function PollingUnitsMap({
@@ -74,11 +77,13 @@ export function PollingUnitsMap({
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const markers = useRef<mapboxgl.Marker[]>([]);
+  const hasFitted = useRef(false);
+  const lastUnitKey = useRef<string>('');
   const [mapReady, setMapReady] = useState(false);
   const [currentStyle, setCurrentStyle] = useState<MapStyleKey>('satellite');
   const [showUnits, setShowUnits] = useState(true);
   const [showAgentLayer, setShowAgentLayer] = useState(showAgents);
-  const [onlineOnly, setOnlineOnly] = useState(false);
+  const [onlineOnly, setOnlineOnly] = useState(true);
 
   const unitsWithCoords = pollingUnits.filter(u => hasCoords(u.location));
   const agentsWithCoords = agents.filter(a => hasCoords(a.lastKnownLocation));
@@ -98,7 +103,8 @@ export function PollingUnitsMap({
 
     if (showUnits) {
       unitsWithCoords.forEach(unit => {
-        const { latitude: lat, longitude: lng } = unit.location!;
+        const lat = Number(unit.location!.latitude);
+        const lng = Number(unit.location!.longitude);
         const online = unit.agentStatus === 'Online';
         const agentColor = online ? '#16a34a' : unit.agentStatus === 'Unassigned' ? '#9ca3af' : '#6b7280';
 
@@ -136,7 +142,8 @@ export function PollingUnitsMap({
 
     if (showAgentLayer) {
       visibleAgents.forEach(agent => {
-        const { latitude: lat, longitude: lng } = agent.lastKnownLocation!;
+        const lat = Number(agent.lastKnownLocation!.latitude);
+        const lng = Number(agent.lastKnownLocation!.longitude);
         const online = (agent.status || '').toLowerCase() === 'online';
         const color = online ? '#16a34a' : '#f97316';
 
@@ -171,16 +178,26 @@ export function PollingUnitsMap({
     }
 
     const allPoints: [number, number][] = [
-      ...(showUnits ? unitsWithCoords.map(u => [u.location!.longitude, u.location!.latitude] as [number, number]) : []),
-      ...(showAgentLayer ? visibleAgents.map(a => [a.lastKnownLocation!.longitude, a.lastKnownLocation!.latitude] as [number, number]) : []),
+      ...(showUnits ? unitsWithCoords.map(u => [Number(u.location!.longitude), Number(u.location!.latitude)] as [number, number]) : []),
+      ...(showAgentLayer ? visibleAgents.map(a => [Number(a.lastKnownLocation!.longitude), Number(a.lastKnownLocation!.latitude)] as [number, number]) : []),
     ];
 
-    if (allPoints.length > 1) {
-      const bounds = new mapboxgl.LngLatBounds();
-      allPoints.forEach(p => bounds.extend(p));
-      map.current.fitBounds(bounds, { padding: 70, maxZoom: 15 });
-    } else if (allPoints.length === 1) {
-      map.current.flyTo({ center: allPoints[0], zoom: 15, essential: true });
+    // Fit the viewport only on first draw and when the polling-unit set changes.
+    // Agent fixes arrive continuously; re-fitting on each one would yank the map
+    // around while the user is watching their agents move.
+    const unitKey = unitsWithCoords.map(u => u.id).sort().join('|');
+    const unitsChanged = lastUnitKey.current !== unitKey;
+    lastUnitKey.current = unitKey;
+
+    if ((!hasFitted.current || unitsChanged) && allPoints.length > 0) {
+      if (allPoints.length > 1) {
+        const bounds = new mapboxgl.LngLatBounds();
+        allPoints.forEach(p => bounds.extend(p));
+        map.current.fitBounds(bounds, { padding: 70, maxZoom: 15 });
+      } else {
+        map.current.flyTo({ center: allPoints[0], zoom: 15, essential: true });
+      }
+      hasFitted.current = true;
     }
   }, [showUnits, showAgentLayer, visibleAgents, unitsWithCoords, clearMarkers]);
 
