@@ -48,9 +48,6 @@ export function useIncidents(options?: {
       setError(null);
 
       let response;
-      
-      // Determine which API endpoint to use based on user role
-      let response;
       const scope = resolveAdminScope(user);
 
       // Determine which API endpoint to use based on user role
