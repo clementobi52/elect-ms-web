@@ -153,7 +153,6 @@ export function PollingUnitsMap({
         `);
 
         const el = document.createElement('div');
-        el.style.position = 'relative';
         el.style.cursor = 'pointer';
 
         const dot = document.createElement('div');
@@ -194,7 +193,6 @@ export function PollingUnitsMap({
         `);
 
         const el = document.createElement('div');
-        el.style.position = 'relative';
         el.style.width = '16px';
         el.style.height = '16px';
         el.style.cursor = 'pointer';
