@@ -93,32 +93,6 @@ function createLabel(text: string): HTMLSpanElement {
   return label;
 }
 
-// Markers that share the same coordinate stack into a single pin and hide the
-// rest. Fan each coincident group into a ring (in screen pixels, via marker
-// offset) so every unit is individually visible; a lone marker gets no offset.
-function computeSpreadOffsets<T>(items: T[], coord: (item: T) => [number, number]): [number, number][] {
-  const groups = new Map<string, number[]>();
-  items.forEach((item, index) => {
-    const [lat, lng] = coord(item);
-    const key = `${lat.toFixed(6)},${lng.toFixed(6)}`;
-    const bucket = groups.get(key);
-    if (bucket) bucket.push(index);
-    else groups.set(key, [index]);
-  });
-
-  const offsets: [number, number][] = items.map(() => [0, 0]);
-  groups.forEach(indices => {
-    const n = indices.length;
-    if (n <= 1) return;
-    const radius = Math.max(18, (n * 26) / (2 * Math.PI));
-    indices.forEach((itemIndex, ringIndex) => {
-      const angle = (2 * Math.PI * ringIndex) / n - Math.PI / 2;
-      offsets[itemIndex] = [radius * Math.cos(angle), radius * Math.sin(angle)];
-    });
-  });
-  return offsets;
-}
-
 export function PollingUnitsMap({
   pollingUnits,
   agents = [],
@@ -157,8 +131,7 @@ export function PollingUnitsMap({
     clearMarkers();
 
     if (showUnits) {
-      const unitOffsets = computeSpreadOffsets(unitsWithCoords, u => [Number(u.location!.latitude), Number(u.location!.longitude)]);
-      unitsWithCoords.forEach((unit, index) => {
+      unitsWithCoords.forEach(unit => {
         const lat = Number(unit.location!.latitude);
         const lng = Number(unit.location!.longitude);
         const online = unit.agentStatus === 'Online';
@@ -194,7 +167,6 @@ export function PollingUnitsMap({
 
         const marker = new mapboxgl.Marker(el)
           .setLngLat([lng, lat])
-          .setOffset(unitOffsets[index])
           .setPopup(popup)
           .addTo(map.current!);
         markers.current.push(marker);
@@ -202,8 +174,7 @@ export function PollingUnitsMap({
     }
 
     if (showAgentLayer) {
-      const agentOffsets = computeSpreadOffsets(visibleAgents, a => [Number(a.lastKnownLocation!.latitude), Number(a.lastKnownLocation!.longitude)]);
-      visibleAgents.forEach((agent, index) => {
+      visibleAgents.forEach(agent => {
         const lat = Number(agent.lastKnownLocation!.latitude);
         const lng = Number(agent.lastKnownLocation!.longitude);
         const online = (agent.status || '').toLowerCase() === 'online';
@@ -239,7 +210,6 @@ export function PollingUnitsMap({
 
         const marker = new mapboxgl.Marker(el, { anchor: 'bottom' })
           .setLngLat([lng, lat])
-          .setOffset(agentOffsets[index])
           .setPopup(popup)
           .addTo(map.current!);
         markers.current.push(marker);
@@ -262,7 +232,7 @@ export function PollingUnitsMap({
       if (allPoints.length > 1) {
         const bounds = new mapboxgl.LngLatBounds();
         allPoints.forEach(p => bounds.extend(p));
-        map.current.fitBounds(bounds, { padding: 90, maxZoom: 15 });
+        map.current.fitBounds(bounds, { padding: 70, maxZoom: 15 });
       } else {
         map.current.flyTo({ center: allPoints[0], zoom: 15, essential: true });
       }
