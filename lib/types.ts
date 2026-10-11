@@ -7,6 +7,10 @@
 export const ROLES = {
   POLLING_AGENT: 'polling_agent',
   WARD_ADMIN: 'ward_admin',
+  LGA_ADMIN: 'lga_admin',
+  STATE_ADMIN: 'state_admin',
+  // Legacy: the backend still accepts the label but no user carries it. Kept so
+  // old tokens and stored strings do not throw during the transition.
   ZONE_ADMIN: 'zone_admin',
   SITUATION_ROOM: 'situation_room',
 SYSTEM_ADMIN: 'system_admin',
@@ -22,12 +26,16 @@ export type Role = typeof ROLES[keyof typeof ROLES];
 export const ROLE_DISPLAY_NAMES = {
   'polling_agent': 'Polling Agent',
   'ward_admin': 'Ward Admin',
+  'lga_admin': 'LGA Admin',
+  'state_admin': 'State Admin',
   'zone_admin': 'Zone Admin',
   'situation_room': 'Situation Room Admin',
 'system_admin': 'System Admin',
     'platform_admin': 'Platform Admin',
     'Polling Agent': 'Polling Agent',
     'Ward Admin': 'Ward Admin',
+    'LGA Admin': 'LGA Admin',
+    'State Admin': 'State Admin',
     'Zone Admin': 'Zone Admin',
     'Situation Room Admin': 'Situation Room Admin',
     'System Admin': 'System Admin',
@@ -38,7 +46,8 @@ export const ROLE_DISPLAY_NAMES = {
 export const ROLE_OPTIONS = [
   { value: 'Polling Agent', label: 'Polling Agent' },
   { value: 'Ward Admin', label: 'Ward Admin' },
-  { value: 'Zone Admin', label: 'Zone Admin' },
+  { value: 'LGA Admin', label: 'LGA Admin' },
+  { value: 'State Admin', label: 'State Admin' },
   { value: 'Situation Room Admin', label: 'Situation Room Admin' },
   { value: 'System Admin', label: 'System Admin' },
 ];
@@ -54,6 +63,8 @@ export interface User {
   role: Role | string;
   pollingUnitId?: string | null;
   wardId?: string | null;
+  lgaId?: string | null;
+  stateId?: string | null;
   zoneId?: string | null;
   status?: 'active' | 'inactive' | 'pending' | 'Active' | 'Inactive' | 'Pending' | 'Suspended';
   pollingUnit?: PollingUnit;
@@ -271,6 +282,8 @@ export interface DashboardStats {
   totalAgents?: number;
   totalWardAdmins?: number;
   totalZoneAdmins?: number;
+  totalLgaAdmins?: number;
+  totalStateAdmins?: number;
   totalSituationRoomUsers?: number;
   totalSystemAdmins?: number;
   totalZones?: number;
@@ -310,6 +323,20 @@ export const PERMISSIONS = {
     canReviewResults: true,
     canViewWardIncidents: true,
     canManageWardAgents: false,
+  },
+  [ROLES.LGA_ADMIN]: {
+    canViewAllData: false,
+    canViewLgaData: true,
+    canReviewResults: true,
+    canManageWardAdmins: false,
+    canGenerateReports: true,
+  },
+  [ROLES.STATE_ADMIN]: {
+    canViewAllData: false,
+    canViewStateData: true,
+    canReviewResults: true,
+    canManageWardAdmins: false,
+    canGenerateReports: true,
   },
   [ROLES.ZONE_ADMIN]: {
     canViewZoneWards: true,
@@ -375,6 +402,8 @@ export function getRoleKey(role: string): string {
   const roleMap: Record<string, string> = {
     'Polling Agent': ROLES.POLLING_AGENT,
     'Ward Admin': ROLES.WARD_ADMIN,
+    'LGA Admin': ROLES.LGA_ADMIN,
+    'State Admin': ROLES.STATE_ADMIN,
     'Zone Admin': ROLES.ZONE_ADMIN,
     'Situation Room Admin': ROLES.SITUATION_ROOM,
     'System Admin': ROLES.SYSTEM_ADMIN,
@@ -389,11 +418,15 @@ export function getRoleDisplayName(role: string): string {
   const displayNames: Record<string, string> = {
     [ROLES.POLLING_AGENT]: 'Polling Agent',
     [ROLES.WARD_ADMIN]: 'Ward Admin',
+    [ROLES.LGA_ADMIN]: 'LGA Admin',
+    [ROLES.STATE_ADMIN]: 'State Admin',
     [ROLES.ZONE_ADMIN]: 'Zone Admin',
     [ROLES.SITUATION_ROOM]: 'Situation Room Admin',
     [ROLES.SYSTEM_ADMIN]: 'System Admin',
     'Polling Agent': 'Polling Agent',
     'Ward Admin': 'Ward Admin',
+    'LGA Admin': 'LGA Admin',
+    'State Admin': 'State Admin',
     'Zone Admin': 'Zone Admin',
     'Situation Room Admin': 'Situation Room Admin',
     'System Admin': 'System Admin',
@@ -408,11 +441,15 @@ export function getRoleBadgeColor(role: string): string {
   const colors: Record<string, string> = {
     [ROLES.POLLING_AGENT]: 'bg-blue-100 text-blue-800 border-blue-200',
     [ROLES.WARD_ADMIN]: 'bg-green-100 text-green-800 border-green-200',
+    [ROLES.LGA_ADMIN]: 'bg-cyan-100 text-cyan-800 border-cyan-200',
+    [ROLES.STATE_ADMIN]: 'bg-purple-100 text-purple-800 border-purple-200',
     [ROLES.ZONE_ADMIN]: 'bg-purple-100 text-purple-800 border-purple-200',
     [ROLES.SITUATION_ROOM]: 'bg-orange-100 text-orange-800 border-orange-200',
     [ROLES.SYSTEM_ADMIN]: 'bg-red-100 text-red-800 border-red-200',
     'Polling Agent': 'bg-blue-100 text-blue-800 border-blue-200',
     'Ward Admin': 'bg-green-100 text-green-800 border-green-200',
+    'LGA Admin': 'bg-cyan-100 text-cyan-800 border-cyan-200',
+    'State Admin': 'bg-purple-100 text-purple-800 border-purple-200',
     'Zone Admin': 'bg-purple-100 text-purple-800 border-purple-200',
     'Situation Room Admin': 'bg-orange-100 text-orange-800 border-orange-200',
     'System Admin': 'bg-red-100 text-red-800 border-red-200',

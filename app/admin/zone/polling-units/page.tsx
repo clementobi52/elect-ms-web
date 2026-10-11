@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { useAdminScope } from '@/hooks/useAdminScope';
 import { useToast } from '@/components/ui/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -157,6 +158,8 @@ const getInitials = (name: string): string => {
 export default function ZonePollingUnitsPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { scope, apiBase } = useAdminScope();
+  const scopeNoun = scope?.kind === 'state' ? 'State' : scope?.kind === 'lga' ? 'LGA' : scope?.kind === 'ward' ? 'Ward' : 'Zone';
   const { toast } = useToast();
 
   // State
@@ -230,9 +233,9 @@ export default function ZonePollingUnitsPage() {
             role: user.role,
             userName: user.name
           });
-        } else if (user?.zoneId) {
+        } else if (scope?.kind === 'zone' && scope.id) {
           sendSocketMessage('join-zone', {
-            zoneId: user.zoneId,
+            zoneId: scope.id,
             userId: user.id,
             role: user.role,
             userName: user.name
@@ -241,7 +244,7 @@ export default function ZonePollingUnitsPage() {
         
         // Request polling units data
         sendSocketMessage('request-polling-units', {
-          zoneId: user?.zoneId || 'all',
+          zoneId: scope?.kind === 'zone' ? scope.id : 'all',
           userId: user.id,
           situationRoom: isSituationRoom
         });
@@ -458,16 +461,16 @@ export default function ZonePollingUnitsPage() {
           userId: user.id,
           situationRoom: true
         });
-      } else if (user?.zoneId) {
+      } else if (scope?.kind === 'zone' && scope.id) {
         sendSocketMessage('join-zone', {
-          zoneId: user.zoneId,
-          userId: user.id,
-          role: user.role,
-          userName: user.name
+          zoneId: scope.id,
+          userId: user?.id,
+          role: user?.role,
+          userName: user?.name
         });
         sendSocketMessage('request-polling-units', {
-          zoneId: user.zoneId,
-          userId: user.id
+          zoneId: scope.id,
+          userId: user?.id
         });
       }
     }
@@ -501,9 +504,9 @@ export default function ZonePollingUnitsPage() {
       if (isSituationRoom) {
         // ✅ Situation Room sees all polling units
         url = `/admin/situation/polling-units?${params.toString()}`;
-      } else if (user?.zoneId) {
-        // Zone Admin sees only their zone
-        url = `/admin/zone/${user.zoneId}/polling-units?${params.toString()}`;
+      } else if (apiBase) {
+        // State / LGA / Zone Admin sees only their scope
+        url = `${apiBase}/polling-units?${params.toString()}`;
       } else {
         throw new Error('No zone ID found');
       }
@@ -553,7 +556,7 @@ export default function ZonePollingUnitsPage() {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [user?.zoneId, limit, filters, toast, isSituationRoom]);
+  }, [apiBase, limit, filters, toast, isSituationRoom]);
 
   // Fetch all data
   const fetchData = useCallback(async (showLoading = true) => {
@@ -565,13 +568,13 @@ export default function ZonePollingUnitsPage() {
     setError(null);
 
     try {
-      // Set zone name
+      // Set scope name
       if (isSituationRoom) {
         setZoneName('All Zones');
-      } else if (user?.zoneName) {
-        setZoneName(user.zoneName);
+      } else if (scope?.label) {
+        setZoneName(scope.label);
       } else {
-        setZoneName('your zone');
+        setZoneName(`your ${scopeNoun.toLowerCase()}`);
       }
 
       await fetchPollingUnits(1, filters);
@@ -591,7 +594,7 @@ export default function ZonePollingUnitsPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user, filters, fetchPollingUnits, toast, setupSocketListeners, isSituationRoom]);
+  }, [scope, filters, fetchPollingUnits, toast, setupSocketListeners, isSituationRoom]);
 
   // Handle filter change
   const handleFilterChange = (key: keyof FilterState, value: string) => {
@@ -735,8 +738,8 @@ export default function ZonePollingUnitsPage() {
     return (
       <div className="flex flex-col min-h-screen">
         <AdminHeader 
-          title={isSituationRoom ? "Situation Room - Polling Units" : "Zone Polling Units"}
-          subtitle={isSituationRoom ? "Viewing polling units across all zones" : "Manage polling units across all wards in your zone"}
+          title={isSituationRoom ? "Situation Room - Polling Units" : `${scopeNoun} Polling Units`}
+          subtitle={isSituationRoom ? "Viewing polling units across all zones" : `Manage polling units across all wards in your ${scopeNoun.toLowerCase()}`}
         />
         <div className="flex-1 container p-4 md:p-6 space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -753,11 +756,11 @@ export default function ZonePollingUnitsPage() {
   return (
     <div className="flex flex-col min-h-screen">
       <AdminHeader 
-        title={isSituationRoom ? "📊 Situation Room - Polling Units" : "Zone Polling Units"}
+        title={isSituationRoom ? "📊 Situation Room - Polling Units" : `📊 ${scopeNoun} Polling Units`}
         subtitle={
           isSituationRoom 
             ? `Viewing all polling units across all zones ${!isConnected ? '🔴 Offline' : '🟢 Live'}`
-            : `Manage polling units across all wards in ${zoneName || 'your zone'} ${!isConnected ? '🔴 Offline' : '🟢 Live'}`
+            : `Manage polling units across all wards in ${zoneName || `your ${scopeNoun.toLowerCase()}`} ${!isConnected ? '🔴 Offline' : '🟢 Live'}`
         }
       />
 

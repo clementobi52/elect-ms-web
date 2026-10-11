@@ -3,21 +3,25 @@
 import React, { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
-import { ROLES } from '@/lib/types';
+import { ROLES, getRoleKey } from '@/lib/types';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 
 // Role to default dashboard mapping
 const ROLE_DASHBOARD: Record<string, string> = {
-  'Ward Admin': '/admin/ward',
-  'Zone Admin': '/admin/zone', // You'll need to create this
-  'Situation Room Admin': '/admin/situation', // You'll need to create this
-  'System Admin': '/admin/system', // You'll need to create this
+  [ROLES.WARD_ADMIN]: '/admin/ward',
+  [ROLES.ZONE_ADMIN]: '/admin/zone',
+  [ROLES.LGA_ADMIN]: '/admin/lga',
+  [ROLES.STATE_ADMIN]: '/admin/state',
+  [ROLES.SITUATION_ROOM]: '/admin/situation',
+  [ROLES.SYSTEM_ADMIN]: '/admin/system',
 };
 
 // System Admin can access ALL admin routes
 const SYSTEM_ADMIN_PATHS = [
   '/admin/ward',
   '/admin/zone',
+  '/admin/lga',
+  '/admin/state',
   '/admin/situation',
   '/admin/system',
   '/admin/wards',
@@ -47,7 +51,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
       }
 
       // Polling agents should not access admin panel
-if (user && user.role === ROLES.POLLING_AGENT) {
+if (user && getRoleKey(user.role) === ROLES.POLLING_AGENT) {
           router.push('/unauthorized');
           return;
         }
@@ -56,15 +60,17 @@ if (user && user.role === ROLES.POLLING_AGENT) {
         // the wrong page for them - they have no zones, wards or polling units.
         // Sending them to their own area is clearer than an unauthorized page,
         // and their token is refused by the /api routes anyway.
-        if (user && user.role === ROLES.PLATFORM_ADMIN) {
+        if (user && getRoleKey(user.role) === ROLES.PLATFORM_ADMIN) {
           router.push('/platform');
           return;
         }
 
       // Handle role-based routing
       if (user) {
+        const role = getRoleKey(user.role);
+
         // SYSTEM ADMIN: Allow access to ALL admin routes
-        if (user.role === 'System Admin') {
+        if (role === ROLES.SYSTEM_ADMIN) {
           // System Admin can access everything, no restrictions
           return;
         }
@@ -72,6 +78,8 @@ if (user && user.role === ROLES.POLLING_AGENT) {
         // For other roles, check if they have access to the current path
         const isWardPath = pathname.startsWith('/admin/ward');
         const isZonePath = pathname.startsWith('/admin/zone');
+        const isLgaPath = pathname.startsWith('/admin/lga');
+        const isStatePath = pathname.startsWith('/admin/state');
         const isSituationPath = pathname.startsWith('/admin/situation');
         const isSystemPath = pathname.startsWith('/admin/system');
         const isWardsPath = pathname.startsWith('/admin/wards');
@@ -80,42 +88,56 @@ if (user && user.role === ROLES.POLLING_AGENT) {
         const isAnalyticsPath = pathname.startsWith('/admin/analytics');
         const isReportsPath = pathname.startsWith('/admin/reports');
 
+        // Shared (geographically scoped) sub-pages served by the zone route tree
+        const sharedScopedPages =
+          pathname === '/admin/polling-units' ||
+          pathname === '/admin/agents' ||
+          pathname === '/admin/results' ||
+          pathname === '/admin/incidents';
+
         // Role-based access control
-        if (user.role === 'Ward Admin') {
+        if (role === ROLES.WARD_ADMIN) {
           // Ward Admin can only access /admin/ward/* and shared routes
-          const allowed = isWardPath || 
-                         pathname === '/admin/polling-units' ||
-                         pathname === '/admin/agents' ||
-                         pathname === '/admin/results' ||
-                         pathname === '/admin/incidents';
-          
+          const allowed = isWardPath || sharedScopedPages;
+
           if (!allowed) {
             router.push('/admin/ward');
           }
         }
-        else if (user.role === 'Zone Admin') {
+        else if (role === ROLES.ZONE_ADMIN) {
           // Zone Admin can access zone, ward, and shared routes
-          const allowed = isZonePath || isWardPath || isWardsPath || 
-                         isAnalyticsPath || isReportsPath ||
-                         pathname === '/admin/polling-units' ||
-                         pathname === '/admin/agents' ||
-                         pathname === '/admin/results' ||
-                         pathname === '/admin/incidents';
-          
+          const allowed = isZonePath || isWardPath || isWardsPath ||
+                         isAnalyticsPath || isReportsPath || sharedScopedPages;
+
           if (!allowed) {
             router.push('/admin/zone');
           }
         }
-        else if (user.role === 'Situation Room Admin') {
+        else if (role === ROLES.LGA_ADMIN) {
+          // LGA Admin can access lga, zone, ward, and shared routes
+          const allowed = isLgaPath || isZonePath || isWardPath || isWardsPath ||
+                         isAnalyticsPath || isReportsPath || sharedScopedPages;
+
+          if (!allowed) {
+            router.push('/admin/lga');
+          }
+        }
+        else if (role === ROLES.STATE_ADMIN) {
+          // State Admin can access state, lga, zone, ward, and shared routes
+          const allowed = isStatePath || isLgaPath || isZonePath || isWardPath ||
+                         isWardsPath || isAnalyticsPath || isReportsPath ||
+                         sharedScopedPages;
+
+          if (!allowed) {
+            router.push('/admin/state');
+          }
+        }
+        else if (role === ROLES.SITUATION_ROOM) {
           // Situation Room can access most routes except system admin
-          const allowed = isSituationPath || isZonePath || isWardPath || 
-                         isWardsPath || isZonesPath || isLivePath || 
-                         isAnalyticsPath || isReportsPath ||
-                         pathname === '/admin/polling-units' ||
-                         pathname === '/admin/agents' ||
-                         pathname === '/admin/results' ||
-                         pathname === '/admin/incidents';
-          
+          const allowed = isSituationPath || isStatePath || isLgaPath || isZonePath ||
+                         isWardPath || isWardsPath || isZonesPath || isLivePath ||
+                         isAnalyticsPath || isReportsPath || sharedScopedPages;
+
           if (!allowed) {
             router.push('/admin/situation-room');
           }
@@ -147,8 +169,8 @@ if (user && user.role === ROLES.POLLING_AGENT) {
     if (
       !isAuthenticated ||
       !user ||
-      user.role === ROLES.POLLING_AGENT ||
-      user.role === ROLES.PLATFORM_ADMIN
+      getRoleKey(user.role) === ROLES.POLLING_AGENT ||
+      getRoleKey(user.role) === ROLES.PLATFORM_ADMIN
     ) {
       return null;
     }

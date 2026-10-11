@@ -38,11 +38,15 @@ interface NavItem {
 
 // Helper to get role-specific base path
 const getRoleBasePath = (role: string): string => {
-  switch (role) {
+  switch (getRoleDisplayName(role)) {
     case 'System Admin':
       return '/admin/system';
     case 'Situation Room Admin':
       return '/admin/situation';
+    case 'State Admin':
+      return '/admin/state';
+    case 'LGA Admin':
+      return '/admin/lga';
     case 'Zone Admin':
       return '/admin/zone';
     case 'Ward Admin':
@@ -58,36 +62,36 @@ const navItems: NavItem[] = [
     title: 'Dashboard',
     getHref: (role) => `${getRoleBasePath(role)}`,
     icon: <LayoutDashboard className="h-5 w-5" />,
-    roles: ['Ward Admin', 'Zone Admin', 'Situation Room Admin', 'System Admin'],
+    roles: ['Ward Admin', 'Zone Admin', 'LGA Admin', 'State Admin', 'Situation Room Admin', 'System Admin'],
   },
   {
     title: 'Election Management',
     icon: <FileText className="h-5 w-5" />,
-    roles: ['Ward Admin', 'Zone Admin', 'Situation Room Admin', 'System Admin'],
+    roles: ['Ward Admin', 'Zone Admin', 'LGA Admin', 'State Admin', 'Situation Room Admin', 'System Admin'],
     children: [
       {
         title: 'Polling Units',
         getHref: (role) => `${getRoleBasePath(role)}/polling-units`,
         icon: <MapPin className="h-5 w-5" />,
-        roles: ['Ward Admin', 'Zone Admin', 'Situation Room Admin', 'System Admin'],
+        roles: ['Ward Admin', 'Zone Admin', 'LGA Admin', 'State Admin', 'Situation Room Admin', 'System Admin'],
       },
       {
         title: 'Agents',
         getHref: (role) => `${getRoleBasePath(role)}/agents`,
         icon: <Users className="h-5 w-5" />,
-        roles: ['Ward Admin', 'Zone Admin', 'Situation Room Admin', 'System Admin'],
+        roles: ['Ward Admin', 'Zone Admin', 'LGA Admin', 'State Admin', 'Situation Room Admin', 'System Admin'],
       },
       {
         title: 'Election Results',
         getHref: (role) => `${getRoleBasePath(role)}/results`,
         icon: <FileText className="h-5 w-5" />,
-        roles: ['Ward Admin', 'Zone Admin', 'Situation Room Admin', 'System Admin'],
+        roles: ['Ward Admin', 'Zone Admin', 'LGA Admin', 'State Admin', 'Situation Room Admin', 'System Admin'],
       },
       {
         title: 'Incidents',
         getHref: (role) => `${getRoleBasePath(role)}/incidents`,
         icon: <AlertTriangle className="h-5 w-5" />,
-        roles: ['Ward Admin', 'Zone Admin', 'Situation Room Admin', 'System Admin'],
+        roles: ['Ward Admin', 'Zone Admin', 'LGA Admin', 'State Admin', 'Situation Room Admin', 'System Admin'],
       },
     ],
     getHref: function (role: string): string {
@@ -97,14 +101,14 @@ const navItems: NavItem[] = [
   {
     title: 'Geographic Management',
     icon: <Map className="h-5 w-5" />,
-    roles: ['Zone Admin', 'Situation Room Admin', 'System Admin'],
+    roles: ['Zone Admin', 'LGA Admin', 'State Admin', 'Situation Room Admin', 'System Admin'],
     children: [
       {
         title: 'Wards',
         // ✅ FIXED: System Admin goes to /admin/system/wards
         getHref: (role) => role === 'System Admin' ? '/admin/system/wards' : `${getRoleBasePath(role)}/wards`,
         icon: <Building2 className="h-5 w-5" />,
-        roles: ['Zone Admin', 'Situation Room Admin', 'System Admin'],
+        roles: ['Zone Admin', 'LGA Admin', 'State Admin', 'Situation Room Admin', 'System Admin'],
       },
       {
         title: 'Zones',
@@ -121,7 +125,7 @@ const navItems: NavItem[] = [
   {
     title: 'Monitoring & Analytics',
     icon: <Activity className="h-5 w-5" />,
-    roles: ['Zone Admin', 'Situation Room Admin', 'System Admin'],
+    roles: ['Zone Admin', 'LGA Admin', 'State Admin', 'Situation Room Admin', 'System Admin'],
     children: [
       {
         title: 'Live Monitoring',
@@ -133,13 +137,13 @@ const navItems: NavItem[] = [
         title: 'Analytics',
         getHref: (role) => role === 'System Admin' ? '/admin/system/analytics' : `${getRoleBasePath(role)}/analytics`,
         icon: <BarChart3 className="h-5 w-5" />,
-        roles: ['Zone Admin', 'Situation Room Admin', 'System Admin'],
+        roles: ['Zone Admin', 'LGA Admin', 'State Admin', 'Situation Room Admin', 'System Admin'],
       },
       {
         title: 'Reports',
         getHref: (role) => role === 'System Admin' ? '/admin/system/reports' : `${getRoleBasePath(role)}/reports`,
         icon: <ClipboardList className="h-5 w-5" />,
-        roles: ['Zone Admin', 'Situation Room Admin', 'System Admin'],
+        roles: ['Zone Admin', 'LGA Admin', 'State Admin', 'Situation Room Admin', 'System Admin'],
       },
     ],
     getHref: function (role: string): string {

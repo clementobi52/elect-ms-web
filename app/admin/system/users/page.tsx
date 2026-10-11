@@ -99,6 +99,10 @@ interface User {
   pollingUnitName?: string;
   wardId?: string;
   wardName?: string;
+  lgaId?: string;
+  lgaName?: string;
+  stateId?: string;
+  stateName?: string;
   zoneId?: string;
   zoneName?: string;
   createdAt: string;
@@ -144,6 +148,10 @@ const getRoleBadge = (role: string) => {
       return <Badge className="bg-blue-600 text-white">Situation Room</Badge>;
     case 'Zone Admin':
       return <Badge className="bg-green-600 text-white">Zone Admin</Badge>;
+    case 'State Admin':
+      return <Badge className="bg-indigo-600 text-white">State Admin</Badge>;
+    case 'LGA Admin':
+      return <Badge className="bg-teal-600 text-white">LGA Admin</Badge>;
     case 'Ward Admin':
       return <Badge className="bg-yellow-600 text-white">Ward Admin</Badge>;
     case 'Polling Agent':
@@ -224,6 +232,9 @@ export default function AdminUsersPage() {
     pollingUnitId: '',
     wardId: '',
     zoneId: '',
+    lgaId: '',
+    stateId: '',
+    status: 'Active',
   });
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -253,11 +264,15 @@ export default function AdminUsersPage() {
   const [zones, setZones] = useState<{ id: string; name: string }[]>([]);
   const [wards, setWards] = useState<{ id: string; name: string }[]>([]);
   const [pollingUnits, setPollingUnits] = useState<{ id: string; name: string }[]>([]);
+  const [states, setStates] = useState<{ id: string; name: string }[]>([]);
+  const [lgas, setLgas] = useState<{ id: string; name: string }[]>([]);
 
 
   const roleOptions = [
     { value: 'System Admin', label: 'System Admin' },
     { value: 'Situation Room Admin', label: 'Situation Room Admin' },
+    { value: 'State Admin', label: 'State Admin' },
+    { value: 'LGA Admin', label: 'LGA Admin' },
     { value: 'Zone Admin', label: 'Zone Admin' },
     { value: 'Ward Admin', label: 'Ward Admin' },
     { value: 'Polling Agent', label: 'Polling Agent' },
@@ -275,7 +290,7 @@ export default function AdminUsersPage() {
         return;
       }
 
-      const [zonesRes, wardsRes, pollingUnitsRes] = await Promise.all([
+      const [zonesRes, wardsRes, pollingUnitsRes, statesRes, lgasRes] = await Promise.all([
         fetch(`${API_BASE_URL}/admin/system/zones?limit=1000`, {
           headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
         }),
@@ -283,6 +298,12 @@ export default function AdminUsersPage() {
           headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
         }),
         fetch(`${API_BASE_URL}/admin/system/polling-units?limit=1000`, {
+          headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
+        }),
+        fetch(`${API_BASE_URL}/admin/states?limit=1000`, {
+          headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
+        }),
+        fetch(`${API_BASE_URL}/admin/lgas?limit=1000`, {
           headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
         })
       ]);
@@ -300,6 +321,16 @@ export default function AdminUsersPage() {
       if (pollingUnitsRes.ok) {
         const data = await pollingUnitsRes.json();
         setPollingUnits(data.pollingUnits || data.data || []);
+      }
+
+      if (statesRes.ok) {
+        const data = await statesRes.json();
+        setStates(data.data || data.states || []);
+      }
+
+      if (lgasRes.ok) {
+        const data = await lgasRes.json();
+        setLgas(data.data || data.lgas || []);
       }
 
     } catch (error) {
@@ -451,6 +482,8 @@ export default function AdminUsersPage() {
           pollingUnitId: formData.pollingUnitId || undefined,
           wardId: formData.wardId || undefined,
           zoneId: formData.zoneId || undefined,
+          lgaId: formData.lgaId || undefined,
+          stateId: formData.stateId || undefined,
         })
       });
 
@@ -515,6 +548,8 @@ export default function AdminUsersPage() {
           pollingUnitId: formData.pollingUnitId || undefined,
           wardId: formData.wardId || undefined,
           zoneId: formData.zoneId || undefined,
+          lgaId: formData.lgaId || undefined,
+          stateId: formData.stateId || undefined,
           status: formData.status || 'Active',
         })
       });
@@ -592,6 +627,9 @@ export default function AdminUsersPage() {
       pollingUnitId: '',
       wardId: '',
       zoneId: '',
+      lgaId: '',
+      stateId: '',
+      status: 'Active',
     });
     setFormError(null);
     setSelectedUser(null);
@@ -607,6 +645,9 @@ export default function AdminUsersPage() {
       pollingUnitId: user.pollingUnitId || '',
       wardId: user.wardId || '',
       zoneId: user.zoneId || '',
+      lgaId: user.lgaId || '',
+      stateId: user.stateId || '',
+      status: user.status || 'Active',
     });
     setFormError(null);
     setIsEditDialogOpen(true);
@@ -696,6 +737,8 @@ export default function AdminUsersPage() {
     const total = pagination.total || users.length;
     const systemAdmins = users.filter(u => u.role === 'System Admin').length;
     const situationRoom = users.filter(u => u.role === 'Situation Room Admin').length;
+    const stateAdmins = users.filter(u => u.role === 'State Admin').length;
+    const lgaAdmins = users.filter(u => u.role === 'LGA Admin').length;
     const zoneAdmins = users.filter(u => u.role === 'Zone Admin').length;
     const wardAdmins = users.filter(u => u.role === 'Ward Admin').length;
     const pollingAgents = users.filter(u => u.role === 'Polling Agent').length;
@@ -705,6 +748,8 @@ export default function AdminUsersPage() {
       total,
       systemAdmins,
       situationRoom,
+      stateAdmins,
+      lgaAdmins,
       zoneAdmins,
       wardAdmins,
       pollingAgents,
@@ -765,7 +810,7 @@ export default function AdminUsersPage() {
 
       <div className="flex-1 container p-4 md:p-6 space-y-6">
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           <Card className="bg-gradient-to-br from-blue-50 to-blue-100/50 border-blue-200">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -789,6 +834,34 @@ export default function AdminUsersPage() {
                 </div>
                 <div className="h-10 w-10 rounded-full bg-purple-200 flex items-center justify-center">
                   <Shield className="h-5 w-5 text-purple-700" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 border-indigo-200">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-indigo-700 font-medium">State Admins</p>
+                  <p className="text-2xl font-bold text-indigo-900">{formatNumber(stats.stateAdmins)}</p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-indigo-200 flex items-center justify-center">
+                  <Shield className="h-5 w-5 text-indigo-700" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-teal-50 to-teal-100/50 border-teal-200">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-teal-700 font-medium">LGA Admins</p>
+                  <p className="text-2xl font-bold text-teal-900">{formatNumber(stats.lgaAdmins)}</p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-teal-200 flex items-center justify-center">
+                  <Building2 className="h-5 w-5 text-teal-700" />
                 </div>
               </div>
             </CardContent>
@@ -1354,6 +1427,58 @@ export default function AdminUsersPage() {
                     </select>
                   </div>
                 )}
+
+                {formData.role === 'State Admin' && (
+                  <div>
+                    <Label htmlFor="state">State *</Label>
+                    <select
+                      id="state"
+                      className="w-full mt-1 px-3 py-2 bg-background border rounded-md"
+                      value={formData.stateId}
+                      onChange={(e) => setFormData({ ...formData, stateId: e.target.value })}
+                    >
+                      <option value="">Select a state...</option>
+                      {states.map((state) => (
+                        <option key={state.id} value={state.id}>{state.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {formData.role === 'LGA Admin' && (
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="lgaState">State</Label>
+                      <select
+                        id="lgaState"
+                        className="w-full mt-1 px-3 py-2 bg-background border rounded-md"
+                        value={formData.stateId}
+                        onChange={(e) => setFormData({ ...formData, stateId: e.target.value, lgaId: '' })}
+                      >
+                        <option value="">All states</option>
+                        {states.map((state) => (
+                          <option key={state.id} value={state.id}>{state.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <Label htmlFor="lga">LGA *</Label>
+                      <select
+                        id="lga"
+                        className="w-full mt-1 px-3 py-2 bg-background border rounded-md"
+                        value={formData.lgaId}
+                        onChange={(e) => setFormData({ ...formData, lgaId: e.target.value })}
+                      >
+                        <option value="">Select an LGA...</option>
+                        {lgas
+                          .filter((lga: any) => !formData.stateId || lga.state_id === formData.stateId || lga.stateId === formData.stateId)
+                          .map((lga) => (
+                            <option key={lga.id} value={lga.id}>{lga.name}</option>
+                          ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
             </ScrollArea>
 
@@ -1507,6 +1632,58 @@ export default function AdminUsersPage() {
                         <option key={zone.id} value={zone.id}>{zone.name}</option>
                       ))}
                     </select>
+                  </div>
+                )}
+
+                {formData.role === 'State Admin' && (
+                  <div>
+                    <Label htmlFor="editState">State</Label>
+                    <select
+                      id="editState"
+                      className="w-full mt-1 px-3 py-2 bg-background border rounded-md"
+                      value={formData.stateId}
+                      onChange={(e) => setFormData({ ...formData, stateId: e.target.value })}
+                    >
+                      <option value="">Select a state...</option>
+                      {states.map((state) => (
+                        <option key={state.id} value={state.id}>{state.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {formData.role === 'LGA Admin' && (
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="editLgaState">State</Label>
+                      <select
+                        id="editLgaState"
+                        className="w-full mt-1 px-3 py-2 bg-background border rounded-md"
+                        value={formData.stateId}
+                        onChange={(e) => setFormData({ ...formData, stateId: e.target.value, lgaId: '' })}
+                      >
+                        <option value="">All states</option>
+                        {states.map((state) => (
+                          <option key={state.id} value={state.id}>{state.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <Label htmlFor="editLga">LGA</Label>
+                      <select
+                        id="editLga"
+                        className="w-full mt-1 px-3 py-2 bg-background border rounded-md"
+                        value={formData.lgaId}
+                        onChange={(e) => setFormData({ ...formData, lgaId: e.target.value })}
+                      >
+                        <option value="">Select an LGA...</option>
+                        {lgas
+                          .filter((lga: any) => !formData.stateId || lga.state_id === formData.stateId || lga.stateId === formData.stateId)
+                          .map((lga) => (
+                            <option key={lga.id} value={lga.id}>{lga.name}</option>
+                          ))}
+                      </select>
+                    </div>
                   </div>
                 )}
               </div>

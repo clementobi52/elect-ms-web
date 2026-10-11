@@ -14,7 +14,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 // These match your backend roles EXACTLY
 const ADMIN_ROLES = [
   'Ward Admin',
-  'Zone Admin', 
+  'Zone Admin',
+  'LGA Admin',
+  'State Admin', 
   'Situation Room Admin',
   'System Admin',
 ] as const;
@@ -42,6 +44,12 @@ function LoginForm() {
             break;
           case 'Zone Admin':
             router.push('/admin/zone');
+            break;
+          case 'LGA Admin':
+            router.push('/admin/lga');
+            break;
+          case 'State Admin':
+            router.push('/admin/state');
             break;
           case 'Situation Room Admin':
             router.push('/admin/situation');

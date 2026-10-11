@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/auth-context';
+import { useAdminScope } from '@/hooks/useAdminScope';
 import { useToast } from '@/components/ui/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -132,7 +132,8 @@ function ProgressBar({
 
 export default function ZoneWardsPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { scope, apiBase } = useAdminScope();
+  const scopeNoun = scope?.kind === 'state' ? 'State' : scope?.kind === 'lga' ? 'LGA' : scope?.kind === 'ward' ? 'Ward' : 'Zone';
   const { toast } = useToast();
 
   // State
@@ -174,9 +175,9 @@ export default function ZoneWardsPage() {
   // Fetch wards with pagination
   const fetchWards = useCallback(async (pageNum: number = 1, search: string = '') => {
     try {
-      const zoneId = user?.zoneId;
-      if (!zoneId) {
-        throw new Error('Zone ID not found');
+      const zoneId = scope?.id;
+      if (!zoneId || !apiBase) {
+        throw new Error('Admin scope not found');
       }
 
       setIsLoadingMore(pageNum > 1);
@@ -191,7 +192,7 @@ export default function ZoneWardsPage() {
         wards: any[]; 
         pagination: PaginationData;
       }>(
-        `/admin/zone/${zoneId}/wards?${params.toString()}`
+        `${apiBase}/wards?${params.toString()}`
       );
       
       console.log('📡 Wards Response:', response);
@@ -240,7 +241,7 @@ export default function ZoneWardsPage() {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [user?.zoneId, limit, zoneName]);
+  }, [apiBase, limit, zoneName]);
 
   // Calculate stats
   const calculateStats = useCallback((wardList: Ward[]) => {
@@ -315,13 +316,11 @@ export default function ZoneWardsPage() {
     setError(null);
 
     try {
-      const zoneId = user?.zoneId;
-      
-      if (!zoneId) {
-        throw new Error('Zone ID not found');
+      if (!apiBase) {
+        throw new Error('Admin scope not found');
       }
 
-      console.log('📡 Fetching wards for zone:', zoneId);
+      console.log('📡 Fetching wards for scope:', scope?.kind, scope?.id);
 
       // Fetch wards with pagination
       await fetchWards(1, searchTerm);
@@ -329,7 +328,7 @@ export default function ZoneWardsPage() {
       // ✅ Also fetch zone stats for accurate numbers
       try {
         const statsResponse = await apiClient.get<{ success: boolean; stats: any }>(
-          `/admin/zone/${zoneId}/stats`
+          `${apiBase}/stats`
         );
         
         console.log('📡 Zone Stats Response:', statsResponse);
@@ -352,11 +351,11 @@ export default function ZoneWardsPage() {
         console.log('Could not fetch separate stats, using ward data');
       }
 
-      // Set zone name
-      if (user?.zoneName) {
-        setZoneName(user.zoneName);
+      // Set scope name
+      if (scope?.label) {
+        setZoneName(scope.label);
       } else {
-        setZoneName('your zone');
+        setZoneName(`your ${scopeNoun.toLowerCase()}`);
       }
     } catch (error: any) {
       console.error('Error fetching wards:', error);
@@ -370,7 +369,7 @@ export default function ZoneWardsPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user, searchTerm, fetchWards, toast]);
+  }, [scope, apiBase, searchTerm, fetchWards, toast]);
 
   // Handle search
   const handleSearch = (search: string) => {
@@ -391,10 +390,10 @@ export default function ZoneWardsPage() {
 
   // Initial load
   useEffect(() => {
-    if (user?.zoneId) {
+    if (apiBase) {
       fetchData(true);
     }
-  }, [fetchData, user?.zoneId]);
+  }, [fetchData, apiBase]);
 
   // Handle refresh
   const handleRefresh = () => {
@@ -450,8 +449,8 @@ export default function ZoneWardsPage() {
     return (
       <div className="flex flex-col min-h-screen">
         <AdminHeader 
-          title="Zone Wards"
-          subtitle="Manage wards across your zone"
+          title={`${scopeNoun} Wards`}
+          subtitle={`Manage wards across your ${scopeNoun.toLowerCase()}`}
         />
         <div className="flex-1 container p-4 md:p-6 space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -470,8 +469,8 @@ export default function ZoneWardsPage() {
     return (
       <div className="flex flex-col min-h-screen">
         <AdminHeader 
-          title="Zone Wards"
-          subtitle="Manage wards across your zone"
+          title={`${scopeNoun} Wards`}
+          subtitle={`Manage wards across your ${scopeNoun.toLowerCase()}`}
         />
         <div className="flex-1 container p-4 md:p-6">
           <Card>
@@ -496,8 +495,8 @@ export default function ZoneWardsPage() {
   return (
     <div className="flex flex-col min-h-screen">
       <AdminHeader 
-        title="Zone Wards"
-        subtitle={`Manage wards across ${zoneName || 'your zone'}`}
+        title={`${scopeNoun} Wards`}
+        subtitle={`Manage wards across ${zoneName || `your ${scopeNoun.toLowerCase()}`}`}
         actions={
           <Button
             variant="outline"
@@ -681,7 +680,7 @@ export default function ZoneWardsPage() {
             {wards.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Building2 className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                <p>No wards found in your zone</p>
+                <p>{`No wards found in your ${scopeNoun.toLowerCase()}`}</p>
               </div>
             ) : filteredWards.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">

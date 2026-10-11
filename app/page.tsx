@@ -95,7 +95,7 @@ export default function Page() {
     },
     {
       name: 'Chief Emeka Okafor',
-      role: 'Zone Admin, Lagos',
+      role: 'State Admin, Lagos',
       quote: 'The offline capability is incredible. Our agents can work in remote areas without internet and sync when they get back online.',
       avatar: 'EO',
     },

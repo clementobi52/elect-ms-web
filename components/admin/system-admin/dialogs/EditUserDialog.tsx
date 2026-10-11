@@ -25,6 +25,7 @@ import {
   Shield,
   MapPin,
   Building2,
+  Map,
   Users,
   UserCog,
   Sparkles,
@@ -32,7 +33,7 @@ import {
   X,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
-import { searchPollingUnits, searchWards, searchZones } from '@/lib/api/pollingUnits';
+import { searchPollingUnits, searchWards, searchZones, searchStates, searchLgas } from '@/lib/api/pollingUnits';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { User, Zone, Ward, PollingUnit } from '@/lib/types';
@@ -53,7 +54,8 @@ interface EditUserDialogProps {
 const roleOptions = [
   { value: 'Polling Agent', label: 'Polling Agent', icon: MapPin, color: 'blue' },
   { value: 'Ward Admin', label: 'Ward Admin', icon: Building2, color: 'green' },
-  { value: 'Zone Admin', label: 'Zone Admin', icon: Users, color: 'purple' },
+  { value: 'LGA Admin', label: 'LGA Admin', icon: Building2, color: 'teal' },
+  { value: 'State Admin', label: 'State Admin', icon: Map, color: 'purple' },
   { value: 'Situation Room Admin', label: 'Situation Room Admin', icon: Shield, color: 'orange' },
   { value: 'System Admin', label: 'System Admin', icon: Shield, color: 'red' },
 ];
@@ -90,6 +92,7 @@ export const EditUserDialog: React.FC<EditUserDialogProps> = ({
   // polling unit still auto-detects its ward and zone.
   const [filterZoneId, setFilterZoneId] = useState('');
   const [filterWardId, setFilterWardId] = useState('');
+  const [filterStateId, setFilterStateId] = useState('');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -97,6 +100,8 @@ export const EditUserDialog: React.FC<EditUserDialogProps> = ({
     role: '',
     pollingUnitId: '',
     wardId: '',
+    lgaId: '',
+    stateId: '',
     zoneId: '',
     status: 'Active',
   });
@@ -118,6 +123,8 @@ export const EditUserDialog: React.FC<EditUserDialogProps> = ({
         role: user.role || '',
         pollingUnitId: user.pollingUnitId || '',
         wardId: user.wardId || '',
+        lgaId: user.lgaId || '',
+        stateId: user.stateId || '',
         zoneId: user.zoneId || '',
         status: user.status || 'Active',
       });
@@ -147,6 +154,7 @@ export const EditUserDialog: React.FC<EditUserDialogProps> = ({
       setSelectedWardName('');
       setFilterZoneId('');
       setFilterWardId('');
+      setFilterStateId('');
     }
   }, [open]);
 
@@ -337,8 +345,12 @@ export const EditUserDialog: React.FC<EditUserDialogProps> = ({
         setError('Please select a ward');
         return;
       }
-      if (formData.role === 'Zone Admin' && !formData.zoneId) {
-        setError('Please select a zone');
+      if (formData.role === 'LGA Admin' && !formData.lgaId) {
+        setError('Please select an LGA');
+        return;
+      }
+      if (formData.role === 'State Admin' && !formData.stateId) {
+        setError('Please select a state');
         return;
       }
 
@@ -365,6 +377,13 @@ export const EditUserDialog: React.FC<EditUserDialogProps> = ({
         if (formData.zoneId) {
           payload.zoneId = formData.zoneId;
         }
+      } else if (formData.role === 'LGA Admin') {
+        payload.lgaId = formData.lgaId;
+        if (formData.stateId) {
+          payload.stateId = formData.stateId;
+        }
+      } else if (formData.role === 'State Admin') {
+        payload.stateId = formData.stateId;
       } else if (formData.role === 'Zone Admin') {
         payload.zoneId = formData.zoneId;
       }
@@ -414,6 +433,8 @@ export const EditUserDialog: React.FC<EditUserDialogProps> = ({
       role: value,
       pollingUnitId: '',
       wardId: '',
+      lgaId: '',
+      stateId: '',
       zoneId: '',
     });
     setAutoDetectedWard(null);
@@ -423,6 +444,7 @@ export const EditUserDialog: React.FC<EditUserDialogProps> = ({
     setIsManualOverride(false);
     setFilterZoneId('');
     setFilterWardId('');
+    setFilterStateId('');
   };
 
   if (!user) return null;
@@ -782,6 +804,70 @@ export const EditUserDialog: React.FC<EditUserDialogProps> = ({
                 </div>
               )}
 
+              {formData.role === 'State Admin' && (
+                <div className="mt-2">
+                  <Label className="text-xs font-medium text-gray-600 flex items-center gap-1">
+                    <Map className="h-3.5 w-3.5" />
+                    State <span className="text-red-500">*</span>
+                  </Label>
+                  <SearchableSelectServer
+                    value={formData.stateId}
+                    onChange={(value) => setFormData({ ...formData, stateId: value })}
+                    fetchOptions={searchStates}
+                    placeholder="Search state..."
+                    searchPlaceholder="Type to search..."
+                    emptyMessage="No states found"
+                    className="mt-1"
+                    portal={true}
+                  />
+                </div>
+              )}
+
+              {formData.role === 'LGA Admin' && (
+                <div className="mt-2 space-y-3">
+                  <div>
+                    <Label className="text-xs font-medium text-gray-600 flex items-center gap-1">
+                      <Map className="h-3.5 w-3.5" />
+                      State
+                    </Label>
+                    <SearchableSelectServer
+                      value={filterStateId}
+                      onChange={(value) => {
+                        setFilterStateId(value);
+                        setFormData(prev => ({ ...prev, lgaId: '', stateId: value }));
+                      }}
+                      fetchOptions={searchStates}
+                      placeholder="All states"
+                      searchPlaceholder="Type to search..."
+                      emptyMessage="No states found"
+                      className="mt-1"
+                      portal={true}
+                    />
+                    <p className="text-xs text-gray-400 mt-1">
+                      Optional - narrows the LGA list below
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label className="text-xs font-medium text-gray-600 flex items-center gap-1">
+                      <Building2 className="h-3.5 w-3.5" />
+                      LGA <span className="text-red-500">*</span>
+                    </Label>
+                    <SearchableSelectServer
+                      value={formData.lgaId}
+                      onChange={(value) => setFormData({ ...formData, lgaId: value })}
+                      fetchOptions={searchLgas}
+                      fetchParams={filterStateId ? { stateId: filterStateId } : undefined}
+                      placeholder={filterStateId ? 'Select an LGA in state...' : 'Search LGA...'}
+                      searchPlaceholder="Type to search..."
+                      emptyMessage="No LGAs found"
+                      className="mt-1"
+                      portal={true}
+                    />
+                  </div>
+                </div>
+              )}
+
               {formData.role === 'Zone Admin' && (
                 <div className="mt-2">
                   <Label className="text-xs font-medium text-gray-600 flex items-center gap-1">
@@ -927,6 +1013,8 @@ export const EditUserDialog: React.FC<EditUserDialogProps> = ({
                 <Info className="h-4 w-4 text-gray-500" />
                 <span className="text-sm text-gray-600">
                   {formData.role === 'Ward Admin' && 'Assign a ward to this admin'}
+                  {formData.role === 'LGA Admin' && 'Assign an LGA to this admin'}
+                  {formData.role === 'State Admin' && 'Assign a state to this admin'}
                   {formData.role === 'Zone Admin' && 'Assign a zone to this admin'}
                   {(formData.role === 'Situation Room Admin' || formData.role === 'System Admin') && 
                     'This role does not require specific assignments'}

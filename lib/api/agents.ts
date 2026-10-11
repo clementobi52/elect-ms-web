@@ -171,9 +171,9 @@ export const agentsApi = {
   /**
    * Get agents by zone (for zone admin)
    */
-  getAgentsByZone: async (zoneId: string): Promise<AgentsResponse> => {
+  getAgentsByZone: async (zoneId: string, kind: string = 'zone'): Promise<AgentsResponse> => {
     try {
-      const response = await apiClient.get<any>(`/admin/zone/${zoneId}/agents`);
+      const response = await apiClient.get<any>(`/admin/${kind}/${zoneId}/agents`);
       
       let agentsData: Agent[] = [];
       if (Array.isArray(response)) {

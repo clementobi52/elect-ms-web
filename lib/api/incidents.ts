@@ -312,13 +312,13 @@ export const incidentsApi = {
   /**
    * Get incidents based on user role
    */
-  getIncidents: async (role?: string, wardId?: string, zoneId?: string): Promise<IncidentsResponse> => {
+  getIncidents: async (role?: string, wardId?: string, zoneId?: string, zoneKind: string = 'zone'): Promise<IncidentsResponse> => {
     try {
       let url = '/admin/incidents';
       
       if (zoneId) {
-        url = `/admin/zone/${zoneId}/incidents`;
-        console.log('📡 Fetching incidents for zone:', zoneId);
+        url = `/admin/${zoneKind}/${zoneId}/incidents`;
+        console.log('📡 Fetching incidents for scope:', zoneKind, zoneId);
       } else if (wardId) {
         url = `/admin/ward/${wardId}/incidents`;
         console.log('📡 Fetching incidents for ward:', wardId);

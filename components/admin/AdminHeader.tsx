@@ -54,6 +54,10 @@ export default function AdminHeader({
         return 'bg-purple-100 text-purple-800';
       case 'Zone Admin':
         return 'bg-blue-100 text-blue-800';
+      case 'State Admin':
+        return 'bg-indigo-100 text-indigo-800';
+      case 'LGA Admin':
+        return 'bg-teal-100 text-teal-800';
       case 'Ward Admin':
         return 'bg-green-100 text-green-800';
       case 'Situation Room Admin':

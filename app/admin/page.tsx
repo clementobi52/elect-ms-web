@@ -3,34 +3,45 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { ROLES } from '@/lib/types';
+import { ROLES, getRoleKey } from '@/lib/types';
 import { Loader2 } from 'lucide-react';
 
-export default function AdminIndexPage() {
+export default function AdminPage() {
   const { user, isLoading, isAuthenticated } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoading && isAuthenticated && user) {
-      // Redirect based on user role
-      switch (user.role) {
-        case ROLES.WARD_ADMIN:
-          router.replace('/admin/ward');
-          break;
-        case ROLES.ZONE_ADMIN:
-          router.replace('/admin/zone');
-          break;
-        case ROLES.SITUATION_ROOM:
-          router.replace('/admin/situation-room');
-          break;
-        case ROLES.SYSTEM_ADMIN:
-          router.replace('/admin/system');
-          break;
-        default:
-          router.replace('/login');
-      }
-    } else if (!isLoading && !isAuthenticated) {
+    if (isLoading) return;
+
+    if (!isAuthenticated || !user) {
       router.replace('/login');
+      return;
+    }
+
+    switch (getRoleKey(user.role)) {
+      case ROLES.WARD_ADMIN:
+        router.replace('/admin/ward');
+        break;
+      case ROLES.ZONE_ADMIN:
+        router.replace('/admin/zone');
+        break;
+      case ROLES.LGA_ADMIN:
+        router.replace('/admin/lga');
+        break;
+      case ROLES.STATE_ADMIN:
+        router.replace('/admin/state');
+        break;
+      case ROLES.SITUATION_ROOM:
+        router.replace('/admin/situation-room');
+        break;
+      case ROLES.SYSTEM_ADMIN:
+        router.replace('/admin/system');
+        break;
+      case ROLES.PLATFORM_ADMIN:
+        router.replace('/platform');
+        break;
+      default:
+        router.replace('/login');
     }
   }, [isLoading, isAuthenticated, user, router]);
 

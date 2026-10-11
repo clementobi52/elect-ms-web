@@ -576,7 +576,7 @@ export function MessagingWidget({
 
   // Get role icon
   const getRoleIcon = (role?: string) => {
-    if (role === 'admin' || role === 'Zone Admin' || role === 'Ward Admin' || role === 'System Admin') {
+    if (role === 'admin' || role === 'Zone Admin' || role === 'Ward Admin' || role === 'LGA Admin' || role === 'State Admin' || role === 'System Admin') {
       return <UserCog className="h-3 w-3 text-blue-500" />;
     }
     return <UserCircle className="h-3 w-3 text-green-500" />;
@@ -594,7 +594,7 @@ export function MessagingWidget({
       (filterStatus === 'unread' && conv.unreadCount > 0);
 
     const matchesRole = filterRole === 'all' ||
-      (filterRole === 'admin' && (conv.role === 'admin' || conv.role === 'Zone Admin' || conv.role === 'Ward Admin' || conv.role === 'System Admin')) ||
+      (filterRole === 'admin' && (conv.role === 'admin' || conv.role === 'Zone Admin' || conv.role === 'Ward Admin' || conv.role === 'LGA Admin' || conv.role === 'State Admin' || conv.role === 'System Admin')) ||
       (filterRole === 'agent' && (conv.role === 'agent' || conv.role === 'Polling Agent'));
 
     return matchesSearch && matchesStatus && matchesRole;
@@ -848,7 +848,7 @@ export function MessagingWidget({
                 </div>
               ) : (
                 filteredConversations.map((conv) => {
-                  const isAdmin = conv.role === 'admin' || conv.role === 'Zone Admin' || conv.role === 'Ward Admin' || conv.role === 'System Admin';
+                  const isAdmin = conv.role === 'admin' || conv.role === 'Zone Admin' || conv.role === 'Ward Admin' || conv.role === 'LGA Admin' || conv.role === 'State Admin' || conv.role === 'System Admin';
                   return (
                     <div
                       key={conv.agentId}
@@ -927,7 +927,7 @@ export function MessagingWidget({
                         <p className="font-medium text-sm">
                           {selectedConv?.agentName || initialContactName || 'Contact'}
                         </p>
-                        {selectedConv && (selectedConv.role === 'admin' || selectedConv.role === 'Zone Admin' || selectedConv.role === 'Ward Admin' || selectedConv.role === 'System Admin') && (
+                                {selectedConv && (selectedConv.role === 'admin' || selectedConv.role === 'Zone Admin' || selectedConv.role === 'Ward Admin' || selectedConv.role === 'LGA Admin' || selectedConv.role === 'State Admin' || selectedConv.role === 'System Admin') && (
                           <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-200 bg-blue-50">
                             Admin
                           </Badge>

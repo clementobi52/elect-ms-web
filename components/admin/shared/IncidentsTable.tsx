@@ -76,7 +76,7 @@ interface IncidentsTableProps {
   showWard?: boolean;
   showZone?: boolean;
   canUpdate?: boolean;
-  role: 'ward' | 'zone' | 'situation' | 'system';
+  role: 'ward' | 'zone' | 'lga' | 'state' | 'situation' | 'system';
   title?: string;
   description?: string;
   wardId?: string;
@@ -230,6 +230,8 @@ export function IncidentsTable({
       case 'system': return { bg: 'bg-purple-50', text: 'text-purple-700', icon: Shield };
       case 'situation': return { bg: 'bg-orange-50', text: 'text-orange-700', icon: Globe };
       case 'zone': return { bg: 'bg-blue-50', text: 'text-blue-700', icon: MapPin };
+      case 'state': return { bg: 'bg-indigo-50', text: 'text-indigo-700', icon: Globe };
+      case 'lga': return { bg: 'bg-teal-50', text: 'text-teal-700', icon: Building2 };
       default: return { bg: 'bg-green-50', text: 'text-green-700', icon: Building2 };
     }
   };
@@ -372,11 +374,15 @@ export function IncidentsTable({
           <p className={`font-medium ${roleBadge.text}`}>
             {role === 'system' && 'System Admin View'}
             {role === 'situation' && 'Situation Room View'}
+            {role === 'state' && 'State Admin View'}
+            {role === 'lga' && 'LGA Admin View'}
             {role === 'zone' && 'Zone Admin View'}
             {role === 'ward' && 'Ward Admin View'}
           </p>
           <p className="text-sm opacity-90">
             {description || `Viewing incidents ${role === 'ward' ? 'in your ward' : 
+              role === 'lga' ? 'in your LGA' : 
+              role === 'state' ? 'in your state' : 
               role === 'zone' ? 'in your zone' : 
               role === 'situation' ? 'across all zones' : 
               'across all wards and zones'}`}

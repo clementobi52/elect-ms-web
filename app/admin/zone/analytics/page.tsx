@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/auth-context';
+import { useAdminScope } from '@/hooks/useAdminScope';
 import { useToast } from '@/components/ui/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -102,7 +102,8 @@ interface AnalyticsData {
 
 export default function ZoneAnalyticsPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { scope, apiBase } = useAdminScope();
+  const scopeNoun = scope?.kind === 'state' ? 'State' : scope?.kind === 'lga' ? 'LGA' : scope?.kind === 'ward' ? 'Ward' : 'Zone';
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
@@ -120,22 +121,20 @@ export default function ZoneAnalyticsPage() {
     }
 
     try {
-      const zoneId = user?.zoneId;
-      
-      if (!zoneId) {
-        throw new Error('Zone ID not found');
+      if (!apiBase) {
+        throw new Error('Admin scope not found');
       }
 
       // Fetch zone stats
       const statsResponse = await apiClient.get<{ success: boolean; stats: any }>(
-        `/admin/zone/${zoneId}/stats`
+        `${apiBase}/stats`
       );
       
       console.log('📡 Zone Stats Response:', statsResponse);
 
       // Fetch wards data
       const wardsResponse = await apiClient.get<{ success: boolean; wards: any[] }>(
-        `/admin/zone/${zoneId}/wards`
+        `${apiBase}/wards`
       );
       
       console.log('📡 Wards Response:', wardsResponse);
@@ -146,7 +145,7 @@ export default function ZoneAnalyticsPage() {
         summary: any[]; 
         totalVotes: number;
       }>(
-        `/admin/zone/${zoneId}/vote-summary`
+        `${apiBase}/vote-summary`
       );
       
       console.log('📡 Vote Summary Response:', voteSummaryResponse);
@@ -201,12 +200,12 @@ export default function ZoneAnalyticsPage() {
       });
 
       // Set zone name
-      if (user?.zoneName) {
-        setZoneName(user.zoneName);
+      if (scope?.label) {
+        setZoneName(scope.label);
       } else if (wards.length > 0 && wards[0].zoneName) {
         setZoneName(wards[0].zoneName);
       } else {
-        setZoneName('your zone');
+        setZoneName(`your ${scopeNoun.toLowerCase()}`);
       }
     } catch (error) {
       console.error('Error fetching analytics:', error);
@@ -219,14 +218,14 @@ export default function ZoneAnalyticsPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user, toast]);
+  }, [scope, apiBase, toast]);
 
   // Initial load
   useEffect(() => {
-    if (user?.zoneId) {
+    if (apiBase) {
       fetchData(true);
     }
-  }, [fetchData, user?.zoneId, timeRange]);
+  }, [fetchData, apiBase, timeRange]);
 
   // Handle refresh
   const handleRefresh = () => {
@@ -245,8 +244,8 @@ export default function ZoneAnalyticsPage() {
     return (
       <div className="flex flex-col min-h-screen">
         <AdminHeader 
-          title="Zone Analytics"
-          subtitle="Comprehensive analytics and insights for your zone"
+          title={`${scopeNoun} Analytics`}
+          subtitle={`Comprehensive analytics and insights for your ${scopeNoun.toLowerCase()}`}
         />
         <div className="flex-1 container p-4 md:p-6 space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -268,8 +267,8 @@ export default function ZoneAnalyticsPage() {
     return (
       <div className="flex flex-col min-h-screen">
         <AdminHeader 
-          title="Zone Analytics"
-          subtitle="Comprehensive analytics and insights for your zone"
+          title={`${scopeNoun} Analytics`}
+          subtitle={`Comprehensive analytics and insights for your ${scopeNoun.toLowerCase()}`}
         />
         <div className="flex-1 container p-4 md:p-6">
           <Card>
@@ -288,8 +287,8 @@ export default function ZoneAnalyticsPage() {
   return (
     <div className="flex flex-col min-h-screen">
       <AdminHeader 
-        title="Zone Analytics"
-        subtitle={`Comprehensive analytics and insights for ${zoneName || 'your zone'}`}
+        title={`${scopeNoun} Analytics`}
+        subtitle={`Comprehensive analytics and insights for ${zoneName || `your ${scopeNoun.toLowerCase()}`}`}
       />
 
       <div className="flex items-center justify-end gap-2 px-6 py-4">

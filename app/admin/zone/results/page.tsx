@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/auth-context';
+import { useAdminScope } from '@/hooks/useAdminScope';
 import { useToast } from '@/components/ui/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -80,7 +80,8 @@ import { resultsApi, Result, ResultStats } from '@/lib/api/results';
 
 export default function ZoneResultsPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { scope } = useAdminScope();
+  const scopeNoun = scope?.kind === 'state' ? 'State' : scope?.kind === 'lga' ? 'LGA' : scope?.kind === 'ward' ? 'Ward' : 'Zone';
   const { toast } = useToast();
 
   const [results, setResults] = useState<Result[]>([]);
@@ -115,8 +116,8 @@ export default function ZoneResultsPage() {
     }
 
     try {
-      // Get results for this zone
-      const resultsResponse = await resultsApi.getResultsByZone(user?.zoneId || '');
+      // Get results for this scope
+      const resultsResponse = await resultsApi.getResultsByZone(scope?.id || '', scope?.kind || 'zone');
       
       console.log('📡 Results Response:', resultsResponse);
       
@@ -138,11 +139,11 @@ export default function ZoneResultsPage() {
         setStats(newStats);
       }
 
-      // Set zone name from user
-      if (user?.zoneName) {
-        setZoneName(user.zoneName);
+      // Set scope name
+      if (scope?.label) {
+        setZoneName(scope.label);
       } else {
-        setZoneName('your zone');
+        setZoneName(`your ${scopeNoun.toLowerCase()}`);
       }
     } catch (error) {
       console.error('Error fetching zone results:', error);
@@ -155,7 +156,7 @@ export default function ZoneResultsPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user, toast]);
+  }, [scope, toast]);
 
   // Initial load
   useEffect(() => {
@@ -301,8 +302,8 @@ export default function ZoneResultsPage() {
     return (
       <div className="flex flex-col min-h-screen">
         <AdminHeader 
-          title="Zone Results"
-          subtitle="Manage election results across all wards in your zone"
+          title={`${scopeNoun} Results`}
+          subtitle={`Manage election results across all wards in your ${scopeNoun.toLowerCase()}`}
         />
         <div className="flex-1 container p-4 md:p-6 space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -319,8 +320,8 @@ export default function ZoneResultsPage() {
   return (
     <div className="flex flex-col min-h-screen">
       <AdminHeader 
-        title="Zone Results"
-        subtitle={`Manage election results across all wards in ${zoneName || 'your zone'}`}
+        title={`${scopeNoun} Results`}
+        subtitle={`Manage election results across all wards in ${zoneName || `your ${scopeNoun.toLowerCase()}`}`}
       />
 
       <div className="flex-1 container p-4 md:p-6 space-y-6">
@@ -488,7 +489,7 @@ export default function ZoneResultsPage() {
             {results.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <FileText className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                <p>No results found in your zone</p>
+                <p>{`No results found in your ${scopeNoun.toLowerCase()}`}</p>
               </div>
             ) : filteredResults.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">

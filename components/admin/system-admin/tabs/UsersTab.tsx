@@ -134,6 +134,20 @@ export const UsersTab: React.FC<UsersTabProps> = ({
           name: user.zoneName || 'Not Assigned',
           details: `Administrator for zone`,
         };
+      case 'LGA Admin':
+        return {
+          type: 'LGA',
+          id: user.lgaId,
+          name: (user as any).lga?.name || (user as any).lgaName || 'Not Assigned',
+          details: `Administrator for LGA`,
+        };
+      case 'State Admin':
+        return {
+          type: 'State',
+          id: user.stateId,
+          name: (user as any).state?.name || (user as any).stateName || 'Not Assigned',
+          details: `Administrator for state`,
+        };
       default:
         return {
           type: 'System',
@@ -312,6 +326,8 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                 <SelectItem value="all">All Roles</SelectItem>
                 <SelectItem value="Polling Agent">Polling Agent</SelectItem>
                 <SelectItem value="Ward Admin">Ward Admin</SelectItem>
+                <SelectItem value="LGA Admin">LGA Admin</SelectItem>
+                <SelectItem value="State Admin">State Admin</SelectItem>
                 <SelectItem value="Zone Admin">Zone Admin</SelectItem>
                 <SelectItem value="Situation Room Admin">Situation Room</SelectItem>
                 <SelectItem value="System Admin">System Admin</SelectItem>

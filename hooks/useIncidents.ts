@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/use-toast';
 import { incidentsApi, Incident } from '@/lib/api/incidents';
 import { SERVER_OFFLINE_MESSAGE, isNetworkError } from '@/lib/messages';
+import { resolveAdminScope } from '@/lib/scope';
 
 export function useIncidents(options?: {
   autoRefresh?: boolean;
@@ -49,15 +50,19 @@ export function useIncidents(options?: {
       let response;
       
       // Determine which API endpoint to use based on user role
+      let response;
+      const scope = resolveAdminScope(user);
+
+      // Determine which API endpoint to use based on user role
       if (user.role === 'System Admin' || user.role === 'Situation Room Admin') {
         // These roles can see all incidents
         response = await incidentsApi.getAllIncidents();
-      } else if (user.role === 'Zone Admin' && user.zoneId) {
-        // Zone Admin sees incidents in their zone
-        response = await incidentsApi.getIncidentsByZone(user.zoneId);
       } else if (user.role === 'Ward Admin' && user.wardId) {
         // Ward Admin sees incidents in their ward
         response = await incidentsApi.getIncidentsByWard(user.wardId);
+      } else if (scope) {
+        // State / LGA / Zone Admin sees incidents in their scope
+        response = await incidentsApi.getIncidents(user.role, undefined, scope.id, scope.kind);
       } else {
         setIncidents([]);
         setError('Incidents are not available for your role.');

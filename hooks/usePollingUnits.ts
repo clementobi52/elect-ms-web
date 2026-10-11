@@ -5,6 +5,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { withTenantHeaders } from '@/lib/tenant';
 import { API_BASE_URL } from '@/lib/config';
 import { SERVER_OFFLINE_MESSAGE, isNetworkError } from '@/lib/messages';
+import { resolveAdminScope, scopeApiBase } from '@/lib/scope';
 
 export interface PollingUnit {
   id: string;
@@ -89,17 +90,17 @@ export function usePollingUnits(options?: {
         throw new Error('No authentication token found');
       }
 
+      const scopeBase = scopeApiBase(resolveAdminScope(user));
+
       let url = '';
       if (user.role === 'System Admin') {
         url = `${API_BASE_URL}/admin/polling-units`;
-      } else if (user.role === 'Situation Room Admin' || user.role === 'Zone Admin') {
-        url = user.zoneId
-          ? `${API_BASE_URL}/admin/zone/${user.zoneId}/polling-units`
-          : `${API_BASE_URL}/admin/polling-units`;
-      } else if (user.role === 'Ward Admin' && user.wardId) {
-        url = `${API_BASE_URL}/admin/ward/${user.wardId}/polling-units`;
+      } else if (user.role === 'Situation Room Admin') {
+        url = `${API_BASE_URL}/admin/situation/polling-units`;
+      } else if (scopeBase) {
+        url = `${API_BASE_URL}${scopeBase}/polling-units`;
       } else {
-        throw new Error('Your account is not linked to a ward or zone');
+        throw new Error('No scope found for user');
       }
 
       const response = await fetch(url, {

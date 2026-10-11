@@ -1,13 +1,15 @@
 // components/admin/system-admin/charts/UserDistributionCards.tsx
 import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Users, Building2, Map, Eye, Shield } from 'lucide-react';
+import { Users, Building2, Map, Eye, Shield, MapPinned } from 'lucide-react';
 
 interface UserDistributionCardsProps {
   stats: {
     totalAgents: number;
     totalWardAdmins: number;
     totalZoneAdmins: number;
+    totalLgaAdmins?: number;
+    totalStateAdmins?: number;
     situationRoomUsers: number;
     systemAdmins: number;
   };
@@ -46,6 +48,26 @@ export const UserDistributionCards: React.FC<UserDistributionCardsProps> = ({ st
       valueColor: 'text-purple-900',
     },
     {
+      bgColor: 'bg-teal-50 border-teal-200',
+      iconBg: 'bg-teal-100',
+      icon: MapPinned,
+      iconColor: 'text-teal-600',
+      label: 'LGA Admins',
+      value: stats.totalLgaAdmins ?? 0,
+      textColor: 'text-teal-700',
+      valueColor: 'text-teal-900',
+    },
+    {
+      bgColor: 'bg-indigo-50 border-indigo-200',
+      iconBg: 'bg-indigo-100',
+      icon: Map,
+      iconColor: 'text-indigo-600',
+      label: 'State Admins',
+      value: stats.totalStateAdmins ?? 0,
+      textColor: 'text-indigo-700',
+      valueColor: 'text-indigo-900',
+    },
+    {
       bgColor: 'bg-orange-50 border-orange-200',
       iconBg: 'bg-orange-100',
       icon: Eye,
@@ -68,7 +90,7 @@ export const UserDistributionCards: React.FC<UserDistributionCardsProps> = ({ st
   ];
 
   return (
-    <div className="grid gap-4 md:grid-cols-5">
+    <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-7">
       {cards.map((card, index) => (
         <Card key={index} className={card.bgColor}>
           <CardContent className="pt-6">

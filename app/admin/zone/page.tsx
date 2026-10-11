@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { useAdminScope } from '@/hooks/useAdminScope';
 import { useToast } from '@/components/ui/use-toast';
 import AdminHeader from '@/components/admin/AdminHeader';
 import { MessagingWidget } from '@/components/admin/MessagingWidget';
@@ -160,6 +161,8 @@ const deduplicateById = <T extends { id: string }>(items: T[]): T[] => {
 
 export default function ZonalAdminDashboard() {
   const { user } = useAuth();
+  const { scope, apiBase } = useAdminScope();
+  const scopeNoun = scope?.kind === 'state' ? 'State' : scope?.kind === 'lga' ? 'LGA' : scope?.kind === 'ward' ? 'Ward' : 'Zone';
   const router = useRouter();
   const { toast } = useToast();
   const [selectedWard, setSelectedWard] = useState<string>('all');
@@ -501,24 +504,24 @@ export default function ZonalAdminDashboard() {
       console.log(`🔌 ZonalAdmin: Socket connection status: ${connected}`);
       setIsConnected(connected);
       
-      if (connected && user?.zoneId) {
+      if (connected && scope?.kind === 'zone' && scope.id) {
         // Join zone room
         sendSocketMessage('join-zone', {
-          zoneId: user.zoneId,
-          userId: user.id,
-          role: user.role,
-          userName: user.name
+          zoneId: scope?.id,
+          userId: user?.id,
+          role: user?.role,
+          userName: user?.name
         });
         
         // Request initial data
         sendSocketMessage('request-zone-data', {
-          zoneId: user.zoneId
+          zoneId: scope?.id
         });
         
         // Request incidents
         sendSocketMessage('request-incidents', {
-          zoneId: user.zoneId,
-          userId: user.id
+          zoneId: scope?.id,
+          userId: user?.id
         });
       }
     });
@@ -629,21 +632,21 @@ export default function ZonalAdminDashboard() {
 
     if (socket && socket.connected) {
       setIsConnected(true);
-      if (user?.zoneId) {
+      if (scope?.kind === 'zone' && scope.id) {
         sendSocketMessage('join-zone', {
-          zoneId: user.zoneId,
-          userId: user.id,
-          role: user.role,
-          userName: user.name
+          zoneId: scope?.id,
+          userId: user?.id,
+          role: user?.role,
+          userName: user?.name
         });
         
         sendSocketMessage('request-zone-data', {
-          zoneId: user.zoneId
+          zoneId: scope?.id
         });
         
         sendSocketMessage('request-incidents', {
-          zoneId: user.zoneId,
-          userId: user.id
+          zoneId: scope?.id,
+          userId: user?.id
         });
       }
     }
@@ -658,8 +661,7 @@ export default function ZonalAdminDashboard() {
   // Fetch wards with pagination
   const fetchWards = useCallback(async (page: number = 1, search: string = '') => {
     try {
-      const zoneId = user?.zoneId;
-      if (!zoneId) return;
+      if (!apiBase) return;
 
       setIsLoadingMore(true);
       
@@ -669,7 +671,7 @@ export default function ZonalAdminDashboard() {
         pagination: PaginationData;
         filters: any;
       }>(
-        `/admin/zone/${zoneId}/wards?page=${page}&limit=${wardLimit}&search=${encodeURIComponent(search)}`
+        `${apiBase}/wards?page=${page}&limit=${wardLimit}&search=${encodeURIComponent(search)}`
       );
 
       if (response.success && response.wards) {
@@ -692,7 +694,7 @@ export default function ZonalAdminDashboard() {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [user?.zoneId, wardLimit]);
+  }, [apiBase, wardLimit]);
 
   // Fetch all data
   const fetchData = useCallback(async (showLoading = true) => {
@@ -704,15 +706,13 @@ export default function ZonalAdminDashboard() {
     setError(null);
 
     try {
-      const zoneId = user?.zoneId;
-      
-      if (!zoneId) {
-        throw new Error('Zone ID not found');
+      if (!apiBase) {
+        throw new Error('Admin scope not found');
       }
 
       // Fetch zone stats
       const statsResponse = await apiClient.get<{ success: boolean; stats: any }>(
-        `/admin/zone/${zoneId}/stats`
+        `${apiBase}/stats`
       );
 
       if (statsResponse.success && statsResponse.stats) {
@@ -737,7 +737,7 @@ export default function ZonalAdminDashboard() {
 
       // Fetch ward admins
       const adminsResponse = await apiClient.get<{ success: boolean; wardAdmins: any[] }>(
-        `/admin/zone/${zoneId}/ward-admins`
+        `${apiBase}/ward-admins`
       );
 
       if (adminsResponse.success && adminsResponse.wardAdmins) {
@@ -746,7 +746,7 @@ export default function ZonalAdminDashboard() {
 
       // Fetch incidents (with pagination)
       const incidentsResponse = await apiClient.get<{ success: boolean; incidents: any[] }>(
-        `/admin/zone/${zoneId}/incidents?page=1&limit=20`
+        `${apiBase}/incidents?page=1&limit=20`
       );
 
       if (incidentsResponse.success && incidentsResponse.incidents) {
@@ -755,7 +755,7 @@ export default function ZonalAdminDashboard() {
 
       // Fetch vote summary
       const voteResponse = await apiClient.get<{ success: boolean; summary: any[]; totalVotes: number }>(
-        `/admin/zone/${zoneId}/vote-summary`
+        `${apiBase}/vote-summary`
       );
 
       if (voteResponse.success) {
@@ -796,7 +796,7 @@ export default function ZonalAdminDashboard() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user, wardSearch, fetchWards, setupSocketListeners]);
+  }, [apiBase, wardSearch, fetchWards, setupSocketListeners]);
 
   // Handle ward search
   const handleWardSearch = (search: string) => {
@@ -817,7 +817,7 @@ export default function ZonalAdminDashboard() {
 
   // Initial load
   useEffect(() => {
-    if (user?.zoneId) {
+    if (apiBase) {
       fetchData(true);
     }
 
@@ -829,7 +829,7 @@ export default function ZonalAdminDashboard() {
         unsubscribeMessages();
       }
     };
-  }, [fetchData, user?.zoneId]);
+  }, [fetchData, apiBase]);
 
   // Handle refresh
   const handleRefresh = async () => {
@@ -942,8 +942,8 @@ export default function ZonalAdminDashboard() {
     return (
       <div className="flex flex-col min-h-screen">
         <AdminHeader 
-          title="Zonal Admin Dashboard" 
-          subtitle="Loading zone data..."
+          title={`${scopeNoun} Admin Dashboard`} 
+          subtitle={`Loading ${scopeNoun.toLowerCase()} data...`}
         />
         <div className="flex-1 p-4 md:p-6 space-y-6">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -964,8 +964,8 @@ export default function ZonalAdminDashboard() {
   return (
     <div className="flex flex-col min-h-screen">
       <AdminHeader 
-        title="Zonal Admin Dashboard" 
-        subtitle={`Managing Zone: ${user?.zoneName || user?.zoneId || 'Zone'} ${!isConnected ? '🔴 Offline' : '🟢 Live'}`}
+        title={`${scopeNoun} Admin Dashboard`} 
+        subtitle={`Managing ${scope?.label || scopeNoun} ${!isConnected ? '🔴 Offline' : '🟢 Live'}`}
         actions={
           <div className="flex items-center gap-2">
             {/* Connection Status */}
@@ -1168,7 +1168,7 @@ export default function ZonalAdminDashboard() {
               <div>
                 <CardTitle>Vote Summary (Approved Results)</CardTitle>
                 <CardDescription>
-                  Aggregated votes from all approved results in your zone
+                  {`Aggregated votes from all approved results in your ${scopeNoun.toLowerCase()}`}
                   {lastUpdated && (
                     <span className="block text-xs mt-1">
                       Last updated: {new Date(lastUpdated).toLocaleString()}
@@ -1216,7 +1216,7 @@ export default function ZonalAdminDashboard() {
               <div className="text-center py-12 text-muted-foreground">
                 <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                 <p className="text-lg font-medium">No vote data available</p>
-                <p className="text-sm">There are no approved results in your zone yet.</p>
+                <p className="text-sm">{`There are no approved results in your ${scopeNoun.toLowerCase()} yet.`}</p>
               </div>
             )}
 
@@ -1475,7 +1475,7 @@ export default function ZonalAdminDashboard() {
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle>Ward Administrators</CardTitle>
-                    <CardDescription>All ward admins in your zone</CardDescription>
+                    <CardDescription>{`All ward admins in your ${scopeNoun.toLowerCase()}`}</CardDescription>
                   </div>
                 </div>
               </CardHeader>
@@ -1573,7 +1573,7 @@ export default function ZonalAdminDashboard() {
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle>Recent Incidents</CardTitle>
-                    <CardDescription>Incidents reported across all wards in your zone</CardDescription>
+                    <CardDescription>{`Incidents reported across all wards in your ${scopeNoun.toLowerCase()}`}</CardDescription>
                   </div>
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm">

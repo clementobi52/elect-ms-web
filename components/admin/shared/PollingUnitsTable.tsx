@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { MapPin, Search, RefreshCw, Download, Filter, Users, Eye, Shield, AlertCircle } from 'lucide-react';
+import { MapPin, Search, RefreshCw, Download, Filter, Users, Eye, Shield, AlertCircle, Globe } from 'lucide-react';
 
 interface PollingUnit {
   id: string;
@@ -35,7 +35,7 @@ interface PollingUnitsTableProps {
   onRefresh?: () => void;
   showWard?: boolean;
   showZone?: boolean;
-  role: 'ward' | 'zone' | 'situation' | 'system';
+  role: 'ward' | 'zone' | 'state' | 'lga' | 'situation' | 'system';
   title?: string;
   description?: string;
 }
@@ -72,6 +72,8 @@ export function PollingUnitsTable({
       case 'system': return { bg: 'bg-purple-50', text: 'text-purple-700', icon: Shield };
       case 'situation': return { bg: 'bg-orange-50', text: 'text-orange-700', icon: Eye };
       case 'zone': return { bg: 'bg-blue-50', text: 'text-blue-700', icon: MapPin };
+      case 'state': return { bg: 'bg-indigo-50', text: 'text-indigo-700', icon: Globe };
+      case 'lga': return { bg: 'bg-teal-50', text: 'text-teal-700', icon: MapPin };
       default: return { bg: 'bg-green-50', text: 'text-green-700', icon: Users };
     }
   };
@@ -103,11 +105,15 @@ export function PollingUnitsTable({
           <p className={`font-medium ${roleBadge.text}`}>
             {role === 'system' && 'System Admin View'}
             {role === 'situation' && 'Situation Room View'}
+            {role === 'state' && 'State Admin View'}
+            {role === 'lga' && 'LGA Admin View'}
             {role === 'zone' && 'Zone Admin View'}
             {role === 'ward' && 'Ward Admin View'}
           </p>
           <p className="text-sm opacity-90">
             {description || `Viewing polling units ${role === 'ward' ? 'in your ward' : 
+              role === 'lga' ? 'in your LGA' : 
+              role === 'state' ? 'in your state' : 
               role === 'zone' ? 'in your zone' : 
               role === 'situation' ? 'across all zones' : 
               'across all wards and zones'}`}

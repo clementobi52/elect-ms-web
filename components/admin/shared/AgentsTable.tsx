@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Users, Search, RefreshCw, Mail, Shield, Eye, AlertCircle, MapPin } from 'lucide-react';
+import { Users, Search, RefreshCw, Mail, Shield, Eye, AlertCircle, MapPin, Globe } from 'lucide-react';
 
 interface Agent {
   id: string;
@@ -36,7 +36,7 @@ interface AgentsTableProps {
   onRefresh?: () => void;
   showWard?: boolean;
   showZone?: boolean;
-  role: 'ward' | 'zone' | 'situation' | 'system';
+  role: 'ward' | 'zone' | 'state' | 'lga' | 'situation' | 'system';
   title?: string;
   description?: string;
 }
@@ -72,6 +72,8 @@ export function AgentsTable({
       case 'system': return { bg: 'bg-purple-50', text: 'text-purple-700', icon: Shield };
       case 'situation': return { bg: 'bg-orange-50', text: 'text-orange-700', icon: Eye };
       case 'zone': return { bg: 'bg-blue-50', text: 'text-blue-700', icon: MapPin };
+      case 'state': return { bg: 'bg-indigo-50', text: 'text-indigo-700', icon: Globe };
+      case 'lga': return { bg: 'bg-teal-50', text: 'text-teal-700', icon: MapPin };
       default: return { bg: 'bg-green-50', text: 'text-green-700', icon: Users };
     }
   };
@@ -88,11 +90,15 @@ export function AgentsTable({
           <p className={`font-medium ${roleBadge.text}`}>
             {role === 'system' && 'System Admin View'}
             {role === 'situation' && 'Situation Room View'}
+            {role === 'state' && 'State Admin View'}
+            {role === 'lga' && 'LGA Admin View'}
             {role === 'zone' && 'Zone Admin View'}
             {role === 'ward' && 'Ward Admin View'}
           </p>
           <p className="text-sm opacity-90">
             {description || `Viewing agents ${role === 'ward' ? 'in your ward' : 
+              role === 'lga' ? 'in your LGA' : 
+              role === 'state' ? 'in your state' : 
               role === 'zone' ? 'in your zone' : 
               role === 'situation' ? 'across all zones' : 
               'across all wards and zones'}`}

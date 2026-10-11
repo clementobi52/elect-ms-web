@@ -5,6 +5,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { withTenantHeaders } from '@/lib/tenant';
 import { API_BASE_URL } from '@/lib/config';
 import { SERVER_OFFLINE_MESSAGE, isNetworkError } from '@/lib/messages';
+import { resolveAdminScope, scopeApiBase } from '@/lib/scope';
 
 interface Agent {
   id: string;
@@ -62,12 +63,12 @@ export function useAgents(options?: {
       });
 
       // Determine endpoint based on user role
+      const scopeBase = scopeApiBase(resolveAdminScope(user));
+
       if (user.role === 'System Admin' || user.role === 'Situation Room Admin') {
         url = `${API_BASE_URL}/admin/system/users?role=Polling Agent`;
-      } else if (user.role === 'Zone Admin' && user.zoneId) {
-        url = `${API_BASE_URL}/admin/zone/${user.zoneId}/agents`;
-      } else if (user.role === 'Ward Admin' && user.wardId) {
-        url = `${API_BASE_URL}/admin/ward/${user.wardId}/agents`;
+      } else if (scopeBase) {
+        url = `${API_BASE_URL}${scopeBase}/agents`;
       } else {
         setAgents([]);
         setError('Agents are not available for your role.');

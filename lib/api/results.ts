@@ -203,9 +203,9 @@ export const resultsApi = {
   /**
    * Get results by zone
    */
-  getResultsByZone: async (zoneId: string): Promise<ResultsResponse> => {
+  getResultsByZone: async (zoneId: string, kind: string = 'zone'): Promise<ResultsResponse> => {
     try {
-      const response = await apiClient.get<any>(`/admin/zone/${zoneId}/results`);
+      const response = await apiClient.get<any>(`/admin/${kind}/${zoneId}/results`);
       
       let resultsData: Result[] = [];
       if (Array.isArray(response)) {

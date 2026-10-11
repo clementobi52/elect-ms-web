@@ -49,6 +49,8 @@ export interface SystemStats {
   totalAgents: number;
   totalWardAdmins: number;
   totalZoneAdmins: number;
+  totalLgaAdmins?: number;
+  totalStateAdmins?: number;
   situationRoomUsers: number;
   systemAdmins: number;
   activeUsers: number;

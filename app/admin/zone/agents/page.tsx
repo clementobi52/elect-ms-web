@@ -3,7 +3,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -76,11 +75,13 @@ import {
 import { Agent, AgentStats } from '@/lib/api/agents';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAgentsApi } from '@/lib/api/agents';
+import { useAdminScope } from '@/hooks/useAdminScope';
 import AdminHeader from '@/components/admin/AdminHeader';
 
 export default function ZoneAgentsPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { scope } = useAdminScope();
+  const scopeNoun = scope?.kind === 'state' ? 'State' : scope?.kind === 'lga' ? 'LGA' : scope?.kind === 'ward' ? 'Ward' : 'Zone';
   const { toast } = useToast();
   const { getAgentsByZone, getAgentStats, updateAgentStatus, reconcileLocation } = useAgentsApi();
 
@@ -113,8 +114,8 @@ export default function ZoneAgentsPage() {
     }
 
     try {
-      // Get agents for this zone
-      const agentsResponse = await getAgentsByZone(user?.zoneId || '');
+      // Get agents for this scope
+      const agentsResponse = await getAgentsByZone(scope?.id || '', scope?.kind || 'zone');
       
       console.log('📡 Agents Response:', agentsResponse);
       
@@ -133,9 +134,9 @@ export default function ZoneAgentsPage() {
         setStats(newStats);
       }
 
-      // Set zone name from user or first agent
-      if (user?.zoneName) {
-        setZoneName(user.zoneName);
+      // Set zone name from scope or first agent
+      if (scope?.label) {
+        setZoneName(scope.label);
       } else if (agentsResponse.agents && agentsResponse.agents.length > 0) {
         const firstAgent = agentsResponse.agents[0];
         if (firstAgent.zoneName) {
@@ -153,7 +154,7 @@ export default function ZoneAgentsPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user, getAgentsByZone, toast]);
+  }, [scope, getAgentsByZone, toast]);
 
   // Initial load
   useEffect(() => {
@@ -263,8 +264,8 @@ export default function ZoneAgentsPage() {
     return (
       <div className="flex flex-col min-h-screen">
         <AdminHeader 
-          title="Zone Agents"
-          subtitle="Manage polling agents across all wards in your zone"
+          title={`${scopeNoun} Agents`}
+          subtitle={`Manage polling agents across all wards in your ${scopeNoun.toLowerCase()}`}
         />
         <div className="flex-1 container p-4 md:p-6 space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -281,8 +282,8 @@ export default function ZoneAgentsPage() {
   return (
     <div className="flex flex-col min-h-screen">
       <AdminHeader 
-        title="Zone Agents"
-        subtitle={`Manage polling agents across all wards in ${zoneName || 'your zone'}`}
+        title={`${scopeNoun} Agents`}
+        subtitle={`Manage polling agents across all wards in ${zoneName || `your ${scopeNoun.toLowerCase()}`}`}
       />
 
       <div className="flex-1 container p-4 md:p-6 space-y-6">
@@ -449,7 +450,7 @@ export default function ZoneAgentsPage() {
             {agents.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Users className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                <p>No agents found in your zone</p>
+                <p>{`No agents found in your ${scopeNoun.toLowerCase()}`}</p>
               </div>
             ) : filteredAgents.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">

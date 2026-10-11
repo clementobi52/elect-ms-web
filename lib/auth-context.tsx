@@ -4,7 +4,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Role, ROLES } from './types';
+import { Role, ROLES, getRoleKey } from './types';
 import { getTenantSlug, setTenantSlug, withTenantHeaders } from './tenant';
 import { API_BASE_URL, DEFAULT_TENANT_SLUG } from '@/lib/config';
 
@@ -603,12 +603,16 @@ export function useAuth() {
 }
 
 // Helper to get redirect path based on role
-function getRedirectPath(role: Role): string {
-  switch (role) {
+function getRedirectPath(role: Role | string): string {
+  switch (getRoleKey(role)) {
     case ROLES.WARD_ADMIN:
       return '/admin/ward';
     case ROLES.ZONE_ADMIN:
       return '/admin/zone';
+    case ROLES.LGA_ADMIN:
+      return '/admin/lga';
+    case ROLES.STATE_ADMIN:
+      return '/admin/state';
     case ROLES.SITUATION_ROOM:
       return '/admin/situation-room';
 case ROLES.SYSTEM_ADMIN:

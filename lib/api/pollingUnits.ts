@@ -242,6 +242,85 @@ export const searchZones = async (search: string): Promise<PollingUnitOption[]> 
     return [];
   }
 };
+/**
+ * Search states (server-side filtering helper).
+ *
+ * States/lgas are the top of the new admin hierarchy. The endpoints return the
+ * full list (bounded by `limit`); we filter client-side by `search` so the
+ * picker behaves like the other SearchableSelectServer sources.
+ */
+export const searchStates = async (search: string): Promise<PollingUnitOption[]> => {
+  try {
+    const token = localStorage.getItem('authToken');
+    if (!token) return [];
+
+    const response = await fetch(`${API_BASE_URL}/admin/states?limit=1000`, {
+      headers: withTenantHeaders({
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      })
+    });
+
+    if (!response.ok) {
+      console.error('❌ States API Error:', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+    const items = data.data || data.states || (Array.isArray(data) ? data : []);
+    const term = search?.trim().toLowerCase();
+
+    return items
+      .filter((item: any) => !term || (item.name || '').toLowerCase().includes(term))
+      .map((item: any) => ({ id: item.id, name: item.name }));
+  } catch (error) {
+    console.error('❌ Error searching states:', error);
+    return [];
+  }
+};
+
+/**
+ * Search LGAs with server-side state filtering.
+ */
+export const searchLgas = async (
+  search: string,
+  scope?: { stateId?: string; limit?: number }
+): Promise<PollingUnitOption[]> => {
+  try {
+    const token = localStorage.getItem('authToken');
+    if (!token) return [];
+
+    const params = new URLSearchParams();
+    params.append('limit', String(scope?.limit || 1000));
+    if (scope?.stateId) {
+      params.append('stateId', scope.stateId);
+    }
+
+    const response = await fetch(`${API_BASE_URL}/admin/lgas?${params.toString()}`, {
+      headers: withTenantHeaders({
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      })
+    });
+
+    if (!response.ok) {
+      console.error('❌ LGAs API Error:', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+    const items = data.data || data.lgas || (Array.isArray(data) ? data : []);
+    const term = search?.trim().toLowerCase();
+
+    return items
+      .filter((item: any) => !term || (item.name || '').toLowerCase().includes(term))
+      .map((item: any) => ({ id: item.id, name: item.name }));
+  } catch (error) {
+    console.error('❌ Error searching LGAs:', error);
+    return [];
+  }
+};
+
 // ============================================
 // ORIGINAL API FUNCTIONS
 // ============================================
@@ -625,5 +704,7 @@ export const usePollingUnitsApi = () => {
     searchPollingUnits,
     searchWards,
     searchZones,
+    searchStates,
+    searchLgas,
   };
 };

@@ -6,6 +6,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { withTenantHeaders } from '@/lib/tenant';
 import { API_BASE_URL } from '@/lib/config';
 import { SERVER_OFFLINE_MESSAGE, isNetworkError } from '@/lib/messages';
+import { resolveAdminScope } from '@/lib/scope';
 
 export interface ElectionResult {
   id: string;
@@ -207,6 +208,8 @@ export function useResults(options?: {
       let response;
 
       // Determine which endpoint to use based on user role
+      const scope = resolveAdminScope(user);
+
       if (user.role === 'System Admin') {
         url = `${API_BASE_URL}/admin/results`;
         console.log('System Admin fetching all results from:', url);
@@ -273,10 +276,10 @@ export function useResults(options?: {
           }
         }
       }
-      else if (user.role === 'Zone Admin' && user.zoneId) {
-        url = `${API_BASE_URL}/admin/zone/${user.zoneId}/results`;
+      else if (scope) {
+        url = `${API_BASE_URL}/admin/${scope.kind}/${scope.id}/results`;
         
-        console.log('Zone Admin fetching results from:', url);
+        console.log(`${scope.kind} admin fetching results from:`, url);
         
         response = await fetch(url, {
           headers: withTenantHeaders({ Authorization: `Bearer ${token}` })

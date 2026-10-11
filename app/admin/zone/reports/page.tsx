@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/auth-context';
+import { useAdminScope } from '@/hooks/useAdminScope';
 import { useToast } from '@/components/ui/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -97,13 +97,13 @@ interface ReportStats {
 
 // Reports API functions
 const reportsApi = {
-  getReports: async (zoneId: string): Promise<{ success: boolean; reports: Report[]; stats: ReportStats }> => {
+  getReports: async (zoneId: string, kind: string = 'zone'): Promise<{ success: boolean; reports: Report[]; stats: ReportStats }> => {
     try {
       const response = await apiClient.get<{
         success: boolean;
         reports: Report[];
         stats: ReportStats;
-      }>(`/admin/zone/${zoneId}/reports`);
+      }>(`/admin/${kind}/${zoneId}/reports`);
       
       return {
         success: response.success || true,
@@ -134,14 +134,15 @@ const reportsApi = {
 
   generateReport: async (
     zoneId: string,
-    options: { type: string; format: string; wardId?: string | null }
+    options: { type: string; format: string; wardId?: string | null },
+    kind: string = 'zone'
   ): Promise<{ success: boolean; report?: Report; message?: string }> => {
     try {
       const response = await apiClient.post<{
         success: boolean;
         report: Report;
         message?: string;
-      }>(`/admin/zone/${zoneId}/reports/generate`, options);
+      }>(`/admin/${kind}/${zoneId}/reports/generate`, options);
       
       return {
         success: response.success || true,
@@ -194,12 +195,12 @@ const reportsApi = {
     }
   },
 
-  deleteReport: async (zoneId: string, reportId: string): Promise<{ success: boolean; message?: string }> => {
+  deleteReport: async (zoneId: string, reportId: string, kind: string = 'zone'): Promise<{ success: boolean; message?: string }> => {
     try {
       const response = await apiClient.delete<{
         success: boolean;
         message?: string;
-      }>(`/admin/zone/${zoneId}/reports/${reportId}`);
+      }>(`/admin/${kind}/${zoneId}/reports/${reportId}`);
       
       return {
         success: response.success || true,
@@ -235,7 +236,8 @@ const reportsApi = {
 
 export default function ZoneReportsPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { scope, apiBase } = useAdminScope();
+  const scopeNoun = scope?.kind === 'state' ? 'State' : scope?.kind === 'lga' ? 'LGA' : scope?.kind === 'ward' ? 'Ward' : 'Zone';
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
@@ -275,14 +277,14 @@ export default function ZoneReportsPage() {
     }
 
     try {
-      const zoneId = user?.zoneId;
-      
-      if (!zoneId) {
-        throw new Error('Zone ID not found');
+      const zoneId = scope?.id;
+
+      if (!zoneId || !apiBase) {
+        throw new Error('Admin scope not found');
       }
 
       // Fetch reports using the reports API
-      const response = await reportsApi.getReports(zoneId);
+      const response = await reportsApi.getReports(zoneId, scope?.kind);
       
       console.log('📡 Reports Response:', response);
 
@@ -334,7 +336,7 @@ export default function ZoneReportsPage() {
       // Fetch wards for filter
       try {
         const wardsResponse = await apiClient.get<{ success: boolean; wards: any[] }>(
-          `/admin/zone/${zoneId}/wards?page=1&limit=100`
+          `${apiBase}/wards?page=1&limit=100`
         );
         
         if (wardsResponse.success && wardsResponse.wards) {
@@ -347,11 +349,11 @@ export default function ZoneReportsPage() {
         console.log('Could not fetch wards for filter');
       }
 
-      // Set zone name
-      if (user?.zoneName) {
-        setZoneName(user.zoneName);
+      // Set scope name
+      if (scope?.label) {
+        setZoneName(scope.label);
       } else {
-        setZoneName('your zone');
+        setZoneName(`your ${scopeNoun.toLowerCase()}`);
       }
     } catch (error) {
       console.error('Error fetching reports:', error);
@@ -364,14 +366,14 @@ export default function ZoneReportsPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user, toast]);
+  }, [scope, apiBase, toast]);
 
   // Initial load
   useEffect(() => {
-    if (user?.zoneId) {
+    if (scope?.id) {
       fetchData(true);
     }
-  }, [fetchData, user?.zoneId]);
+  }, [fetchData, scope?.id]);
 
   // Handle refresh
   const handleRefresh = () => {
@@ -382,10 +384,10 @@ export default function ZoneReportsPage() {
   const handleGenerateReport = async () => {
     setIsGenerating(true);
     try {
-      const zoneId = user?.zoneId;
-      
+      const zoneId = scope?.id;
+
       if (!zoneId) {
-        throw new Error('Zone ID not found');
+        throw new Error('Admin scope not found');
       }
 
       console.log('📡 Generating report with options:', {
@@ -399,7 +401,7 @@ export default function ZoneReportsPage() {
         type: generateType as any,
         format: generateFormat as any,
         wardId: generateWardId === 'all' ? null : generateWardId,
-      });
+      }, scope?.kind);
 
       console.log('📡 Generate response:', response);
 
@@ -455,13 +457,13 @@ export default function ZoneReportsPage() {
   // Handle delete report
   const handleDelete = async (reportId: string) => {
     try {
-      const zoneId = user?.zoneId;
-      
+      const zoneId = scope?.id;
+
       if (!zoneId) {
-        throw new Error('Zone ID not found');
+        throw new Error('Admin scope not found');
       }
 
-      const response = await reportsApi.deleteReport(zoneId, reportId);
+      const response = await reportsApi.deleteReport(zoneId, reportId, scope?.kind);
 
       if (response.success) {
         toast({
@@ -595,8 +597,8 @@ export default function ZoneReportsPage() {
     return (
       <div className="flex flex-col min-h-screen">
         <AdminHeader 
-          title="Zone Reports" 
-          subtitle="Generate and manage reports for your zone"
+          title={`${scopeNoun} Reports`} 
+          subtitle={`Generate and manage reports for your ${scopeNoun.toLowerCase()}`}
         />
         <div className="flex-1 p-4 md:p-6 space-y-6">
           <div className="flex justify-end">
@@ -616,8 +618,8 @@ export default function ZoneReportsPage() {
   return (
     <div className="flex flex-col min-h-screen">
       <AdminHeader 
-        title="Zone Reports" 
-        subtitle={`Generate and manage reports for ${zoneName || 'your zone'}`}
+        title={`${scopeNoun} Reports`} 
+        subtitle={`Generate and manage reports for ${zoneName || `your ${scopeNoun.toLowerCase()}`}`}
       />
 
       <div className="flex-1 p-4 md:p-6 space-y-6">
@@ -1040,7 +1042,7 @@ export default function ZoneReportsPage() {
                 Generate Report
               </DialogTitle>
               <DialogDescription>
-                Create a new report for your zone
+                {`Create a new report for your ${scopeNoun.toLowerCase()}`}
               </DialogDescription>
             </DialogHeader>
 
@@ -1097,7 +1099,7 @@ export default function ZoneReportsPage() {
               <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
                 <p className="text-sm text-blue-700">
                   <Info className="h-4 w-4 inline mr-2" />
-                  This report will include data from all wards in your zone.
+                  {`This report will include data from all wards in your ${scopeNoun.toLowerCase()}.`}
                   {generateType !== 'summary' && generateWardId !== 'all' && 
                     ` Only data from the selected ward will be included.`}
                 </p>

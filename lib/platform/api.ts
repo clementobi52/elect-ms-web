@@ -180,7 +180,9 @@ export function createTenantUser(
     name: string;
     email: string;
     password: string;
-    role?: 'System Admin' | 'Situation Room Admin' | 'Zone Admin' | 'Ward Admin' | 'Polling Agent';
+    role?: 'System Admin' | 'Situation Room Admin' | 'State Admin' | 'LGA Admin' | 'Zone Admin' | 'Ward Admin' | 'Polling Agent';
+    stateId?: string;
+    lgaId?: string;
     wardId?: string;
     zoneId?: string;
     pollingUnitId?: string;

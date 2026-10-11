@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { useAdminScope } from '@/hooks/useAdminScope';
 import { useToast } from '@/components/ui/use-toast';
 import { IncidentsTable } from '@/components/admin/shared/IncidentsTable';
 import { incidentsApi, type Incident } from '@/lib/api/incidents';
@@ -41,7 +42,12 @@ interface ZoneStats {
 export default function ZoneIncidentsPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { scope, apiBase } = useAdminScope();
   const { toast } = useToast();
+
+  const scopeNoun = scope?.kind === 'state' ? 'State' : scope?.kind === 'lga' ? 'LGA' : scope?.kind === 'ward' ? 'Ward' : 'Zone';
+  const tableRole: 'ward' | 'zone' | 'state' | 'lga' =
+    scope?.kind === 'state' ? 'state' : scope?.kind === 'lga' ? 'lga' : scope?.kind === 'ward' ? 'ward' : 'zone';
   
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,22 +75,23 @@ export default function ZoneIncidentsPage() {
     setError(null);
 
     try {
-      // ✅ Get zoneId from user
-      const zoneId = user?.zoneId;
-      
+      // ✅ Get scope from user
+      const zoneId = scope?.id;
+
       if (!zoneId) {
-        setError('Zone ID not found');
+        setError('Admin scope not found');
         setLoading(false);
         return;
       }
 
-      console.log('📡 Fetching incidents for zone:', zoneId);
+      console.log('📡 Fetching incidents for scope:', scope?.kind, zoneId);
 
-      // ✅ Pass zoneId to the API
+      // ✅ Pass scope id + kind to the API
       const incidentsResponse = await incidentsApi.getIncidents(
         user?.role,
         undefined,
-        zoneId
+        zoneId,
+        scope?.kind
       );
       
       console.log('📡 Incidents Response:', incidentsResponse);
@@ -109,11 +116,11 @@ export default function ZoneIncidentsPage() {
         setError(incidentsResponse.error);
       }
 
-      // Set zone name
-      if (user?.zoneName) {
-        setZoneName(user.zoneName);
+      // Set scope name
+      if (scope?.label) {
+        setZoneName(scope.label);
       } else {
-        setZoneName('your zone');
+        setZoneName(`your ${scopeNoun.toLowerCase()}`);
       }
     } catch (error) {
       console.error('Error fetching zone incidents:', error);
@@ -127,14 +134,14 @@ export default function ZoneIncidentsPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user, toast]);
+  }, [user, scope, toast]);
 
   // Initial load
   useEffect(() => {
-    if (user?.zoneId) {
+    if (scope?.id) {
       fetchData(true);
     }
-  }, [fetchData, user?.zoneId]);
+  }, [fetchData, scope?.id]);
 
   // Handle refresh
   const handleRefresh = () => {
@@ -201,8 +208,8 @@ export default function ZoneIncidentsPage() {
     return (
       <div className="flex flex-col min-h-screen">
         <AdminHeader 
-          title="Zone Incidents"
-          subtitle="Manage incidents across all wards in your zone"
+          title={`${scopeNoun} Incidents`}
+          subtitle={`Manage incidents across all wards in your ${scopeNoun.toLowerCase()}`}
         />
         <div className="flex-1 container p-4 md:p-6 space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
@@ -221,8 +228,8 @@ export default function ZoneIncidentsPage() {
     return (
       <div className="flex flex-col min-h-screen">
         <AdminHeader 
-          title="Zone Incidents"
-          subtitle="Manage incidents across all wards in your zone"
+          title={`${scopeNoun} Incidents`}
+          subtitle={`Manage incidents across all wards in your ${scopeNoun.toLowerCase()}`}
         />
         <div className="flex-1 container p-4 md:p-6">
           <Card>
@@ -250,8 +257,8 @@ export default function ZoneIncidentsPage() {
   return (
     <div className="flex flex-col min-h-screen">
       <AdminHeader 
-        title="Zone Incidents"
-        subtitle={`Manage incidents across all wards in ${zoneName || 'your zone'}`}
+        title={`${scopeNoun} Incidents`}
+        subtitle={`Manage incidents across all wards in ${zoneName || `your ${scopeNoun.toLowerCase()}`}`}
         actions={
           <Button
             variant="outline"
@@ -382,9 +389,9 @@ export default function ZoneIncidentsPage() {
           showWard={true}
           showZone={false}
           canUpdate={true}
-          role="zone"
-          title="Zone Incidents"
-          description="All incidents reported across wards in your zone"
+          role={tableRole}
+          title={`${scopeNoun} Incidents`}
+          description={`All incidents reported across wards in your ${scopeNoun.toLowerCase()}`}
           getSeverityColor={getSeverityColor}
           getStatusColor={getStatusColor}
         />
@@ -394,10 +401,10 @@ export default function ZoneIncidentsPage() {
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
               <Users className="h-5 w-5" />
-              Zone Overview
+              {scopeNoun} Overview
             </CardTitle>
             <CardDescription>
-              Summary of incidents across your zone
+              {`Summary of incidents across your ${scopeNoun.toLowerCase()}`}
             </CardDescription>
           </CardHeader>
           <CardContent>
