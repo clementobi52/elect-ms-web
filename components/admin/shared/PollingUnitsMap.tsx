@@ -8,7 +8,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { AlertCircle, Map as MapIcon, Satellite, Layers, Loader2, RefreshCw, Users, MapPin } from 'lucide-react';
+import { AlertCircle, Map as MapIcon, Satellite, Layers, Loader2, RefreshCw, Users, MapPin, Tag } from 'lucide-react';
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '';
 
@@ -65,6 +65,34 @@ function hasCoords(
   return Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0);
 }
 
+// A small caption pinned to the right of a marker dot. Positioned absolutely so
+// it never shifts the marker's anchor, which keeps the dot on its coordinate.
+function createLabel(text: string): HTMLSpanElement {
+  const label = document.createElement('span');
+  label.textContent = text;
+  label.style.cssText = [
+    'position:absolute',
+    'left:calc(100% + 5px)',
+    'top:50%',
+    'transform:translateY(-50%)',
+    'max-width:140px',
+    'overflow:hidden',
+    'text-overflow:ellipsis',
+    'white-space:nowrap',
+    'font-size:11px',
+    'font-weight:600',
+    'line-height:1.3',
+    'color:#111',
+    'background:rgba(255,255,255,0.92)',
+    'padding:1px 5px',
+    'border-radius:4px',
+    'border:1px solid rgba(0,0,0,0.08)',
+    'box-shadow:0 1px 2px rgba(0,0,0,0.2)',
+    'pointer-events:none',
+  ].join(';');
+  return label;
+}
+
 export function PollingUnitsMap({
   pollingUnits,
   agents = [],
@@ -84,6 +112,7 @@ export function PollingUnitsMap({
   const [showUnits, setShowUnits] = useState(true);
   const [showAgentLayer, setShowAgentLayer] = useState(showAgents);
   const [onlineOnly, setOnlineOnly] = useState(true);
+  const [showLabels, setShowLabels] = useState(true);
 
   const unitsWithCoords = pollingUnits.filter(u => hasCoords(u.location));
   const agentsWithCoords = agents.filter(a => hasCoords(a.lastKnownLocation));
@@ -124,13 +153,18 @@ export function PollingUnitsMap({
         `);
 
         const el = document.createElement('div');
-        el.style.backgroundColor = '#2563eb';
-        el.style.width = '18px';
-        el.style.height = '18px';
-        el.style.borderRadius = '50%';
-        el.style.border = '3px solid white';
-        el.style.boxShadow = '0 3px 6px rgba(0,0,0,0.3)';
+        el.style.position = 'relative';
         el.style.cursor = 'pointer';
+
+        const dot = document.createElement('div');
+        dot.style.backgroundColor = '#2563eb';
+        dot.style.width = '18px';
+        dot.style.height = '18px';
+        dot.style.borderRadius = '50%';
+        dot.style.border = '3px solid white';
+        dot.style.boxShadow = '0 3px 6px rgba(0,0,0,0.3)';
+        el.appendChild(dot);
+        if (showLabels) el.appendChild(createLabel(unit.name));
 
         const marker = new mapboxgl.Marker(el)
           .setLngLat([lng, lat])
@@ -160,14 +194,21 @@ export function PollingUnitsMap({
         `);
 
         const el = document.createElement('div');
-        el.style.backgroundColor = color;
+        el.style.position = 'relative';
         el.style.width = '16px';
         el.style.height = '16px';
-        el.style.borderRadius = '50% 50% 50% 0';
-        el.style.transform = 'rotate(-45deg)';
-        el.style.border = '2px solid white';
-        el.style.boxShadow = '0 3px 6px rgba(0,0,0,0.35)';
         el.style.cursor = 'pointer';
+
+        const pin = document.createElement('div');
+        pin.style.width = '100%';
+        pin.style.height = '100%';
+        pin.style.borderRadius = '50% 50% 50% 0';
+        pin.style.transform = 'rotate(-45deg)';
+        pin.style.backgroundColor = color;
+        pin.style.border = '2px solid white';
+        pin.style.boxShadow = '0 3px 6px rgba(0,0,0,0.35)';
+        el.appendChild(pin);
+        if (showLabels) el.appendChild(createLabel(agent.name));
 
         const marker = new mapboxgl.Marker(el, { anchor: 'bottom' })
           .setLngLat([lng, lat])
@@ -199,7 +240,7 @@ export function PollingUnitsMap({
       }
       hasFitted.current = true;
     }
-  }, [showUnits, showAgentLayer, visibleAgents, unitsWithCoords, clearMarkers]);
+  }, [showUnits, showAgentLayer, showLabels, visibleAgents, unitsWithCoords, clearMarkers]);
 
   // Initialize map
   useEffect(() => {
@@ -318,6 +359,15 @@ export function PollingUnitsMap({
                 Online only
               </Button>
             )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowLabels(v => !v)}
+              className={showLabels ? 'ring-2 ring-slate-400 bg-slate-50' : ''}
+            >
+              <Tag className="h-3.5 w-3.5 mr-1.5" />
+              Names
+            </Button>
           </div>
         </div>
       </CardHeader>
