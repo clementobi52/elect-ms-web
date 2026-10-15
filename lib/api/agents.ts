@@ -27,6 +27,7 @@ export interface AgentsResponse {
   agents: Agent[];
   error?: string;
   message?: string;
+  pagination?: { total?: number; page?: number; limit?: number; totalPages?: number };
 }
 
 export interface AgentStats {
@@ -171,9 +172,10 @@ export const agentsApi = {
   /**
    * Get agents by zone (for zone admin)
    */
-  getAgentsByZone: async (zoneId: string, kind: string = 'zone'): Promise<AgentsResponse> => {
+  getAgentsByZone: async (zoneId: string, kind: string = 'zone', page?: number, limit?: number): Promise<AgentsResponse> => {
     try {
-      const response = await apiClient.get<any>(`/admin/${kind}/${zoneId}/agents`);
+      const query = page && limit ? `?page=${page}&limit=${limit}` : '';
+      const response = await apiClient.get<any>(`/admin/${kind}/${zoneId}/agents${query}`);
       
       let agentsData: Agent[] = [];
       if (Array.isArray(response)) {
@@ -186,7 +188,8 @@ export const agentsApi = {
       
       return {
         success: true,
-        agents: agentsData
+        agents: agentsData,
+        pagination: response?.pagination
       };
     } catch (error) {
       console.error('❌ Error fetching zone agents:', error);

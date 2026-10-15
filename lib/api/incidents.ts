@@ -74,6 +74,7 @@ export interface IncidentsResponse {
   message?: string;
   total?: number;
   withCoordinates?: number;
+  pagination?: { total?: number; page?: number; limit?: number; totalPages?: number };
 }
 
 export interface UpdateIncidentResponse {
@@ -304,6 +305,7 @@ const handleIncidentsResponse = (response: any): IncidentsResponse => {
     incidents: processedIncidents,
     total: total || processedIncidents.length,
     withCoordinates: withCoordinates || withCoordsCount,
+    pagination: response?.pagination,
     message: response?.message
   };
 };
@@ -312,15 +314,16 @@ export const incidentsApi = {
   /**
    * Get incidents based on user role
    */
-  getIncidents: async (role?: string, wardId?: string, zoneId?: string, zoneKind: string = 'zone'): Promise<IncidentsResponse> => {
+  getIncidents: async (role?: string, wardId?: string, zoneId?: string, zoneKind: string = 'zone', page?: number, limit?: number): Promise<IncidentsResponse> => {
     try {
-      let url = '/admin/incidents';
+      const query = page && limit ? `?page=${page}&limit=${limit}` : '';
+      let url = `/admin/incidents${query}`;
       
       if (zoneId) {
-        url = `/admin/${zoneKind}/${zoneId}/incidents`;
+        url = `/admin/${zoneKind}/${zoneId}/incidents${query}`;
         console.log('📡 Fetching incidents for scope:', zoneKind, zoneId);
       } else if (wardId) {
-        url = `/admin/ward/${wardId}/incidents`;
+        url = `/admin/ward/${wardId}/incidents${query}`;
         console.log('📡 Fetching incidents for ward:', wardId);
       } else {
         console.log('📡 Fetching all incidents');

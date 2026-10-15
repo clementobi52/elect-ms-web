@@ -33,6 +33,7 @@ export interface ResultsResponse {
   results: Result[];
   error?: string;
   message?: string;
+  pagination?: { total?: number; page?: number; limit?: number; totalPages?: number };
 }
 
 export interface ResultStats {
@@ -203,9 +204,10 @@ export const resultsApi = {
   /**
    * Get results by zone
    */
-  getResultsByZone: async (zoneId: string, kind: string = 'zone'): Promise<ResultsResponse> => {
+  getResultsByZone: async (zoneId: string, kind: string = 'zone', page?: number, limit?: number): Promise<ResultsResponse> => {
     try {
-      const response = await apiClient.get<any>(`/admin/${kind}/${zoneId}/results`);
+      const query = page && limit ? `?page=${page}&limit=${limit}` : '';
+      const response = await apiClient.get<any>(`/admin/${kind}/${zoneId}/results${query}`);
       
       let resultsData: Result[] = [];
       if (Array.isArray(response)) {
@@ -218,7 +220,8 @@ export const resultsApi = {
       
       return {
         success: true,
-        results: resultsData
+        results: resultsData,
+        pagination: response?.pagination
       };
     } catch (error) {
       console.error('❌ Error fetching zone results:', error);

@@ -77,6 +77,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import AdminHeader from '@/components/admin/AdminHeader';
 import { resultsApi, Result, ResultStats } from '@/lib/api/results';
+import { collectAllPages } from '@/lib/api/paginate';
 
 export default function ZoneResultsPage() {
   const router = useRouter();
@@ -116,30 +117,25 @@ export default function ZoneResultsPage() {
     }
 
     try {
-      // Get results for this scope
-      const resultsResponse = await resultsApi.getResultsByZone(scope?.id || '', scope?.kind || 'zone');
-      
-      console.log('📡 Results Response:', resultsResponse);
-      
-      if (resultsResponse.success && resultsResponse.results) {
-        setResults(resultsResponse.results);
-        
-        // Calculate stats from the results data
-        const resultList = resultsResponse.results;
-        const newStats: ResultStats = {
-          total: resultList.length,
-          pending: resultList.filter(r => r.status?.toLowerCase() === 'pending').length,
-          verified: resultList.filter(r => r.status?.toLowerCase() === 'verified').length,
-          rejected: resultList.filter(r => r.status?.toLowerCase() === 'rejected').length,
-          totalVotes: resultList.reduce((sum, r) => 
-            sum + (r.votes?.reduce((vSum, v) => vSum + v.votes, 0) || 0), 0
-          ),
-          parties: [],
-        };
-        setStats(newStats);
-      }
+      const resultList = await collectAllPages(async (page, limit) => {
+        const res = await resultsApi.getResultsByZone(scope?.id || '', scope?.kind || 'zone', page, limit);
+        return { items: res.results, totalPages: res.pagination?.totalPages || 1 };
+      });
 
-      // Set scope name
+      setResults(resultList);
+
+      const newStats: ResultStats = {
+        total: resultList.length,
+        pending: resultList.filter(r => r.status?.toLowerCase() === 'pending').length,
+        verified: resultList.filter(r => r.status?.toLowerCase() === 'verified').length,
+        rejected: resultList.filter(r => r.status?.toLowerCase() === 'rejected').length,
+        totalVotes: resultList.reduce((sum, r) => 
+          sum + (r.votes?.reduce((vSum, v) => vSum + v.votes, 0) || 0), 0
+        ),
+        parties: [],
+      };
+      setStats(newStats);
+
       if (scope?.label) {
         setZoneName(scope.label);
       } else {

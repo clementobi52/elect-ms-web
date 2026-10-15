@@ -62,7 +62,6 @@ import {
   MoreVertical,
   Edit,
   Trash2,
-  UserCheck,
   UserX,
   Activity,
   MapPin as MapPinIcon,
@@ -75,15 +74,25 @@ import {
 import { Agent, AgentStats } from '@/lib/api/agents';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAgentsApi } from '@/lib/api/agents';
+import { collectAllPages } from '@/lib/api/paginate';
 import { useAdminScope } from '@/hooks/useAdminScope';
+import { getSocket, onSocketMessage } from '@/lib/socket-service';
 import AdminHeader from '@/components/admin/AdminHeader';
+
+const buildStats = (agentList: Agent[]): AgentStats => ({
+  total: agentList.length,
+  online: agentList.filter(a => a.status?.toLowerCase() === 'online').length,
+  offline: agentList.filter(a => a.status?.toLowerCase() === 'offline').length,
+  withResults: agentList.filter(a => (a.resultsSubmitted || 0) > 0).length,
+  withoutResults: agentList.filter(a => (a.resultsSubmitted || 0) === 0).length,
+});
 
 export default function ZoneAgentsPage() {
   const router = useRouter();
   const { scope } = useAdminScope();
   const scopeNoun = scope?.kind === 'state' ? 'State' : scope?.kind === 'lga' ? 'LGA' : scope?.kind === 'ward' ? 'Ward' : 'Zone';
   const { toast } = useToast();
-  const { getAgentsByZone, getAgentStats, updateAgentStatus, reconcileLocation } = useAgentsApi();
+  const { getAgentsByZone, reconcileLocation } = useAgentsApi();
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,34 +123,17 @@ export default function ZoneAgentsPage() {
     }
 
     try {
-      // Get agents for this scope
-      const agentsResponse = await getAgentsByZone(scope?.id || '', scope?.kind || 'zone');
-      
-      console.log('📡 Agents Response:', agentsResponse);
-      
-      if (agentsResponse.success && agentsResponse.agents) {
-        setAgents(agentsResponse.agents);
-        
-        // Calculate stats from the agents data
-        const agentList = agentsResponse.agents;
-        const newStats: AgentStats = {
-          total: agentList.length,
-          online: agentList.filter(a => a.status?.toLowerCase() === 'online').length,
-          offline: agentList.filter(a => a.status?.toLowerCase() === 'offline').length,
-          withResults: agentList.filter(a => (a.resultsSubmitted || 0) > 0).length,
-          withoutResults: agentList.filter(a => (a.resultsSubmitted || 0) === 0).length,
-        };
-        setStats(newStats);
-      }
+      const agentList = await collectAllPages(async (page, limit) => {
+        const res = await getAgentsByZone(scope?.id || '', scope?.kind || 'zone', page, limit);
+        return { items: res.agents, totalPages: res.pagination?.totalPages || 1 };
+      });
 
-      // Set zone name from scope or first agent
+      setAgents(agentList);
+
       if (scope?.label) {
         setZoneName(scope.label);
-      } else if (agentsResponse.agents && agentsResponse.agents.length > 0) {
-        const firstAgent = agentsResponse.agents[0];
-        if (firstAgent.zoneName) {
-          setZoneName(firstAgent.zoneName);
-        }
+      } else if (agentList.length > 0 && agentList[0].zoneName) {
+        setZoneName(agentList[0].zoneName);
       }
     } catch (error) {
       console.error('Error fetching zone agents:', error);
@@ -161,31 +153,29 @@ export default function ZoneAgentsPage() {
     fetchData(true);
   }, [fetchData]);
 
+  useEffect(() => {
+    setStats(buildStats(agents));
+  }, [agents]);
+
+  useEffect(() => {
+    getSocket();
+
+    const unsubscribe = onSocketMessage((event, data) => {
+      if (event !== 'agent-status-update' || !data?.agentId || !data?.status) return;
+
+      setAgents(prev => prev.map(agent =>
+        agent.id === data.agentId
+          ? { ...agent, status: data.status, lastActive: data.timestamp ?? agent.lastActive }
+          : agent
+      ));
+    });
+
+    return unsubscribe;
+  }, []);
+
   // Handle refresh
   const handleRefresh = () => {
     fetchData(false);
-  };
-
-  // Handle status update
-  const handleStatusUpdate = async (agentId: string, status: 'Online' | 'Offline') => {
-    try {
-      const response = await updateAgentStatus(agentId, status);
-      
-      if (response.success) {
-        toast({
-          title: "Success",
-          description: `Agent marked as ${status}`,
-        });
-        await fetchData(false);
-      }
-    } catch (error) {
-      console.error('Error updating agent status:', error);
-      toast({
-        title: "Error",
-        description: "Failed to update agent status",
-        variant: "destructive",
-      });
-    }
   };
 
   // Handle location reconciliation
@@ -530,24 +520,6 @@ export default function ZoneAgentsPage() {
                                 View Details
                               </DropdownMenuItem>
                               <DropdownMenuItem
-                                onClick={() => handleStatusUpdate(
-                                  agent.id,
-                                  agent.status === 'Online' ? 'Offline' : 'Online'
-                                )}
-                              >
-                                {agent.status === 'Online' ? (
-                                  <>
-                                    <UserX className="h-4 w-4 mr-2" />
-                                    Mark Offline
-                                  </>
-                                ) : (
-                                  <>
-                                    <UserCheck className="h-4 w-4 mr-2" />
-                                    Mark Online
-                                  </>
-                                )}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
                                 onClick={() => {
                                   setSelectedAgent(agent);
                                   setIsReconcileDialogOpen(true);
@@ -679,28 +651,8 @@ export default function ZoneAgentsPage() {
               </Button>
               <Button
                 variant="outline"
-                onClick={() => {
-                  if (selectedAgent) {
-                    handleStatusUpdate(
-                      selectedAgent.id,
-                      selectedAgent.status === 'Online' ? 'Offline' : 'Online'
-                    );
-                  }
-                }}
+                onClick={() => setIsViewDialogOpen(false)}
               >
-                {selectedAgent?.status === 'Online' ? (
-                  <>
-                    <UserX className="h-4 w-4 mr-2" />
-                    Mark Offline
-                  </>
-                ) : (
-                  <>
-                    <UserCheck className="h-4 w-4 mr-2" />
-                    Mark Online
-                  </>
-                )}
-              </Button>
-              <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
                 Close
               </Button>
             </DialogFooter>

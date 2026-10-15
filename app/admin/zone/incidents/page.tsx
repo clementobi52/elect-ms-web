@@ -8,6 +8,7 @@ import { useAdminScope } from '@/hooks/useAdminScope';
 import { useToast } from '@/components/ui/use-toast';
 import { IncidentsTable } from '@/components/admin/shared/IncidentsTable';
 import { incidentsApi, type Incident } from '@/lib/api/incidents';
+import { collectAllPages } from '@/lib/api/paginate';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { 
@@ -86,35 +87,24 @@ export default function ZoneIncidentsPage() {
 
       console.log('📡 Fetching incidents for scope:', scope?.kind, zoneId);
 
-      // ✅ Pass scope id + kind to the API
-      const incidentsResponse = await incidentsApi.getIncidents(
-        user?.role,
-        undefined,
-        zoneId,
-        scope?.kind
-      );
-      
-      console.log('📡 Incidents Response:', incidentsResponse);
-      
-      if (incidentsResponse.success && incidentsResponse.incidents) {
-        const incidentList = incidentsResponse.incidents;
-        setIncidents(incidentList);
-        
-        // Calculate stats
-        const newStats: ZoneStats = {
-          total: incidentList.length,
-          pending: incidentList.filter(i => i.status?.toLowerCase() === 'pending').length,
-          investigating: incidentList.filter(i => i.status?.toLowerCase() === 'investigating').length,
-          resolved: incidentList.filter(i => i.status?.toLowerCase() === 'resolved').length,
-          critical: incidentList.filter(i => i.severity?.toLowerCase() === 'critical').length,
-          high: incidentList.filter(i => i.severity?.toLowerCase() === 'high').length,
-          medium: incidentList.filter(i => i.severity?.toLowerCase() === 'medium').length,
-          low: incidentList.filter(i => i.severity?.toLowerCase() === 'low').length,
-        };
-        setStats(newStats);
-      } else if (incidentsResponse.error) {
-        setError(incidentsResponse.error);
-      }
+      const incidentList = await collectAllPages(async (page, limit) => {
+        const res = await incidentsApi.getIncidents(user?.role, undefined, zoneId, scope?.kind, page, limit);
+        return { items: res.incidents, totalPages: res.pagination?.totalPages || 1 };
+      });
+
+      setIncidents(incidentList);
+
+      const newStats: ZoneStats = {
+        total: incidentList.length,
+        pending: incidentList.filter(i => i.status?.toLowerCase() === 'pending').length,
+        investigating: incidentList.filter(i => i.status?.toLowerCase() === 'investigating').length,
+        resolved: incidentList.filter(i => i.status?.toLowerCase() === 'resolved').length,
+        critical: incidentList.filter(i => i.severity?.toLowerCase() === 'critical').length,
+        high: incidentList.filter(i => i.severity?.toLowerCase() === 'high').length,
+        medium: incidentList.filter(i => i.severity?.toLowerCase() === 'medium').length,
+        low: incidentList.filter(i => i.severity?.toLowerCase() === 'low').length,
+      };
+      setStats(newStats);
 
       // Set scope name
       if (scope?.label) {
