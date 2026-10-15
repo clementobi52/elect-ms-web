@@ -350,6 +350,9 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                       <div>
                         <p className="font-medium">{user.name}</p>
                         <p className="text-xs text-muted-foreground">{user.email}</p>
+                        {user.username && (
+                          <p className="text-xs text-muted-foreground">@{user.username}</p>
+                        )}
                       </div>
                     </div>
                   </TableCell>

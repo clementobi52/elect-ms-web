@@ -81,10 +81,10 @@ export const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
   const [filterZoneId, setFilterZoneId] = useState('');
   const [filterWardId, setFilterWardId] = useState('');
   const [filterStateId, setFilterStateId] = useState('');
-
   const [formData, setFormData] = useState({
     name: '',
     email: '',
+    username: '',
     password: '',
     role: '',
     pollingUnitId: '',
@@ -100,6 +100,7 @@ export const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
       setFormData({
         name: '',
         email: '',
+        username: '',
         password: '',
         role: '',
         pollingUnitId: '',
@@ -315,6 +316,10 @@ export const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
         role: formData.role,
       };
 
+      if (formData.username.trim()) {
+        payload.username = formData.username.trim().toLowerCase();
+      }
+
       if (formData.role === 'Polling Agent') {
         payload.pollingUnitId = formData.pollingUnitId;
       } else if (formData.role === 'Ward Admin') {
@@ -486,13 +491,32 @@ export const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
                 />
               </div>
 
+              {/* Username (optional) */}
+              <div>
+                <Label htmlFor="userUsername" className="text-xs font-medium text-gray-600 flex items-center gap-1">
+                  <User className="h-3.5 w-3.5" />
+                  Username
+                </Label>
+                <Input
+                  id="userUsername"
+                  type="text"
+                  placeholder="optional, e.g., john.doe"
+                  value={formData.username}
+                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                  autoComplete="off"
+                  className="mt-1 h-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Optional. Lowercase letters, numbers, dot, underscore or hyphen (3-30). Lets the user sign in without their email.
+                </p>
+              </div>
+
               {/* Password */}
               <div>
                 <Label htmlFor="userPassword" className="text-xs font-medium text-gray-600 flex items-center gap-1">
                   <Lock className="h-3.5 w-3.5" />
                   Password <span className="text-red-500">*</span>
-                </Label>
-                <Input
+                </Label>                <Input
                   id="userPassword"
                   type="password"
                   placeholder="Min 6 characters"

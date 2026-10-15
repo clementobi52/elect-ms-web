@@ -44,6 +44,9 @@ export const ViewUserDialog: React.FC<ViewUserDialogProps> = ({
             <div className="font-medium">Email:</div>
             <div className="col-span-2">{user.email}</div>
 
+            <div className="font-medium">Username:</div>
+            <div className="col-span-2">{user.username || '—'}</div>
+
             <div className="font-medium">Role:</div>
             <div className="col-span-2">{user.role}</div>
 

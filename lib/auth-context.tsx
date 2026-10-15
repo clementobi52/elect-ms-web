@@ -25,7 +25,7 @@ interface AuthState {
 }
 
 interface AuthContextType extends AuthState {
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (identifier: string, password: string) => Promise<void>;
   signOut: () => void;
   hasRole: (roles: Role | Role[]) => boolean;
   refreshToken: () => Promise<boolean>;
@@ -352,7 +352,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const signIn = useCallback(async (email: string, password: string) => {
+  const signIn = useCallback(async (identifier: string, password: string): Promise<void> => {
     console.log('🔐 Signing in...');
     
     try {
@@ -371,7 +371,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: withTenantHeaders({ 'Content-Type': 'application/json' }, tenantSlug),
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ identifier, password }),
       });
 
       if (!response.ok) {

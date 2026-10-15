@@ -97,6 +97,7 @@ export const EditUserDialog: React.FC<EditUserDialogProps> = ({
   const [formData, setFormData] = useState({
     name: '',
     email: '',
+    username: '',
     role: '',
     pollingUnitId: '',
     wardId: '',
@@ -120,6 +121,7 @@ export const EditUserDialog: React.FC<EditUserDialogProps> = ({
       setFormData({
         name: user.name || '',
         email: user.email || '',
+        username: user.username || '',
         role: user.role || '',
         pollingUnitId: user.pollingUnitId || '',
         wardId: user.wardId || '',
@@ -364,6 +366,10 @@ export const EditUserDialog: React.FC<EditUserDialogProps> = ({
         status: formData.status,
       };
 
+      // Always send the username (empty string clears it). The admin endpoints
+      // treat "" as "remove the username" rather than "leave unchanged".
+      payload.username = formData.username.trim().toLowerCase();
+
       if (formData.role === 'Polling Agent') {
         payload.pollingUnitId = formData.pollingUnitId;
         // Only send wardId/zoneId if manually overridden
@@ -538,7 +544,7 @@ export const EditUserDialog: React.FC<EditUserDialogProps> = ({
                   Email Address <span className="text-red-500">*</span>
                 </Label>
                 <Input
-                  id="editUserEmail"
+                  id="userEmail"
                   type="email"
                   placeholder="e.g., john@example.com"
                   value={formData.email}
@@ -546,6 +552,27 @@ export const EditUserDialog: React.FC<EditUserDialogProps> = ({
                   className="mt-1 h-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
                 />
               </div>
+
+              {/* Username (optional) */}
+              <div>
+                <Label htmlFor="userUsername" className="text-xs font-medium text-gray-600 flex items-center gap-1">
+                  <UserIcon className="h-3.5 w-3.5" />
+                  Username
+                </Label>
+                <Input
+                  id="userUsername"
+                  type="text"
+                  placeholder="optional, e.g., john.doe"
+                  value={formData.username}
+                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                  autoComplete="off"
+                  className="mt-1 h-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Optional. Lowercase letters, numbers, dot, underscore or hyphen (3-30). Clear it to remove the username.
+                </p>
+              </div>
+
 
               {/* Status */}
               <div>

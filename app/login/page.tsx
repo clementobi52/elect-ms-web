@@ -26,7 +26,7 @@ type AdminRole = typeof ADMIN_ROLES[number];
 function LoginForm() {
   const router = useRouter();
   const { signIn, isAuthenticated, isLoading: authLoading, user } = useAuth();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -73,7 +73,7 @@ function LoginForm() {
     setIsLoading(true);
 
     try {
-      await signIn(email, password);
+      await signIn(identifier, password);
       // Redirect is handled by the useEffect above
     } catch (err: any) {
       console.error('Login error:', err);
@@ -126,16 +126,16 @@ function LoginForm() {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="identifier">Email or username</Label>
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="admin@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  id="identifier"
+                  type="text"
+                  placeholder="admin@example.com or username"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
                   required
                   disabled={isLoading}
-                  autoComplete="email"
+                  autoComplete="username"
                   autoFocus
                   className="h-11"
                 />

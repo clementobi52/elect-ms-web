@@ -60,6 +60,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  username?: string | null;
   role: Role | string;
   pollingUnitId?: string | null;
   wardId?: string | null;
