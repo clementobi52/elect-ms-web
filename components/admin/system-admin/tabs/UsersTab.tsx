@@ -127,13 +127,6 @@ export const UsersTab: React.FC<UsersTabProps> = ({
           name: user.wardName || 'Not Assigned',
           details: `Administrator for ward`,
         };
-      case 'Zone Admin':
-        return {
-          type: 'Zone',
-          id: user.zoneId,
-          name: user.zoneName || 'Not Assigned',
-          details: `Administrator for zone`,
-        };
       case 'LGA Admin':
         return {
           type: 'LGA',
@@ -328,7 +321,6 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                 <SelectItem value="Ward Admin">Ward Admin</SelectItem>
                 <SelectItem value="LGA Admin">LGA Admin</SelectItem>
                 <SelectItem value="State Admin">State Admin</SelectItem>
-                <SelectItem value="Zone Admin">Zone Admin</SelectItem>
                 <SelectItem value="Situation Room Admin">Situation Room</SelectItem>
                 <SelectItem value="System Admin">System Admin</SelectItem>
               </SelectContent>

@@ -281,7 +281,6 @@ export interface DashboardStats {
   totalUsers?: number;
   totalAgents?: number;
   totalWardAdmins?: number;
-  totalZoneAdmins?: number;
   totalLgaAdmins?: number;
   totalStateAdmins?: number;
   totalSituationRoomUsers?: number;

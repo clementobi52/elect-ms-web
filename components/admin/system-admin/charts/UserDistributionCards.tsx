@@ -7,7 +7,6 @@ interface UserDistributionCardsProps {
   stats: {
     totalAgents: number;
     totalWardAdmins: number;
-    totalZoneAdmins: number;
     totalLgaAdmins?: number;
     totalStateAdmins?: number;
     situationRoomUsers: number;
@@ -36,16 +35,6 @@ export const UserDistributionCards: React.FC<UserDistributionCardsProps> = ({ st
       value: stats.totalWardAdmins,
       textColor: 'text-green-700',
       valueColor: 'text-green-900',
-    },
-    {
-      bgColor: 'bg-purple-50 border-purple-200',
-      iconBg: 'bg-purple-100',
-      icon: Map,
-      iconColor: 'text-purple-600',
-      label: 'Zone Admins',
-      value: stats.totalZoneAdmins,
-      textColor: 'text-purple-700',
-      valueColor: 'text-purple-900',
     },
     {
       bgColor: 'bg-teal-50 border-teal-200',
@@ -90,7 +79,7 @@ export const UserDistributionCards: React.FC<UserDistributionCardsProps> = ({ st
   ];
 
   return (
-    <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-7">
+    <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-6">
       {cards.map((card, index) => (
         <Card key={index} className={card.bgColor}>
           <CardContent className="pt-6">

@@ -97,7 +97,6 @@ export const fetchAllData = async (API_BASE_URL: string) => {
         totalPollingUnits: totals.pollingUnits || 0,
         totalAgents: roles['Polling Agent'] || 0,
         totalWardAdmins: roles['Ward Admin'] || 0,
-        totalZoneAdmins: roles['Zone Admin'] || 0,
         totalLgaAdmins: roles['LGA Admin'] || 0,
         totalStateAdmins: roles['State Admin'] || 0,
         situationRoomUsers: roles['Situation Room Admin'] || 0,

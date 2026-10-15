@@ -48,7 +48,6 @@ export interface SystemStats {
   totalPollingUnits: number;
   totalAgents: number;
   totalWardAdmins: number;
-  totalZoneAdmins: number;
   totalLgaAdmins?: number;
   totalStateAdmins?: number;
   situationRoomUsers: number;

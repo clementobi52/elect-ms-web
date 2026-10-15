@@ -52,7 +52,7 @@ export default function SystemAdminDashboard() {
   // Data states
   const [stats, setStats] = useState<SystemStats>({
     totalUsers: 0, totalZones: 0, totalWards: 0, totalPollingUnits: 0,
-    totalAgents: 0, totalWardAdmins: 0, totalZoneAdmins: 0,
+    totalAgents: 0, totalWardAdmins: 0,
     situationRoomUsers: 0, systemAdmins: 0, activeUsers: 0, pendingApprovals: 0,
   });
 
@@ -124,7 +124,6 @@ export default function SystemAdminDashboard() {
         totalPollingUnits: statsData.totalPollingUnits || 0,
         totalAgents: statsData.totalAgents || 0,
         totalWardAdmins: statsData.totalWardAdmins || 0,
-        totalZoneAdmins: statsData.totalZoneAdmins || 0,
         situationRoomUsers: statsData.situationRoomUsers || 0,
         systemAdmins: statsData.systemAdmins || 0,
         activeUsers: statsData.activeUsers || 0,
@@ -379,7 +378,7 @@ export default function SystemAdminDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stats.totalZones?.toLocaleString() || '0'}</div>
-                <p className="text-xs text-muted-foreground">{stats.totalZoneAdmins || 0} admins</p>
+                <p className="text-xs text-muted-foreground">{stats.totalStateAdmins || 0} state admins</p>
               </CardContent>
             </Card>
 
