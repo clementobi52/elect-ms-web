@@ -125,34 +125,42 @@ export default function ZoneAnalyticsPage() {
         throw new Error('Admin scope not found');
       }
 
-      // Fetch zone stats
-      const statsResponse = await apiClient.get<{ success: boolean; stats: any }>(
-        `${apiBase}/stats`
-      );
-      
+      // Fetch stats, all wards and the vote summary in parallel. A state holds
+      // at most a few hundred wards, so one large page avoids per-page round trips.
+      const WARDS_PAGE_SIZE = 1000;
+      const [statsResponse, wardsResponse, voteSummaryResponse] = await Promise.all([
+        apiClient.get<{ success: boolean; stats: any }>(`${apiBase}/stats`),
+        apiClient.get<{ success: boolean; wards: any[]; pagination?: { totalPages?: number } }>(
+          `${apiBase}/wards?page=1&limit=${WARDS_PAGE_SIZE}`
+        ),
+        apiClient.get<{ success: boolean; summary: any[]; totalVotes: number }>(
+          `${apiBase}/vote-summary`
+        ),
+      ]);
+
       console.log('📡 Zone Stats Response:', statsResponse);
 
-      // Fetch wards data
-      const wardsResponse = await apiClient.get<{ success: boolean; wards: any[] }>(
-        `${apiBase}/wards`
-      );
-      
-      console.log('📡 Wards Response:', wardsResponse);
+      const firstWardsResponse = wardsResponse;
+      const totalWardPages = firstWardsResponse.pagination?.totalPages || 1;
+      const allWards = [...(firstWardsResponse.wards || [])];
 
-      // Fetch vote summary
-      const voteSummaryResponse = await apiClient.get<{ 
-        success: boolean; 
-        summary: any[]; 
-        totalVotes: number;
-      }>(
-        `${apiBase}/vote-summary`
-      );
-      
+      if (totalWardPages > 1) {
+        const remaining = await Promise.all(
+          Array.from({ length: totalWardPages - 1 }, (_, i) =>
+            apiClient.get<{ success: boolean; wards: any[] }>(
+              `${apiBase}/wards?page=${i + 2}&limit=${WARDS_PAGE_SIZE}`
+            ).then(r => r.wards || [])
+          )
+        );
+        allWards.push(...remaining.flat());
+      }
+
+      console.log('📡 Wards Response:', allWards.length, 'wards across', totalWardPages, 'page(s)');
       console.log('📡 Vote Summary Response:', voteSummaryResponse);
 
       // Build analytics data from API responses
       const stats = statsResponse.stats || {};
-      const wards = wardsResponse.wards || [];
+      const wards = allWards;
       const voteSummary = voteSummaryResponse.summary || [];
 
       // Calculate verification rate

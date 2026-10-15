@@ -335,12 +335,29 @@ export default function ZoneReportsPage() {
 
       // Fetch wards for filter
       try {
-        const wardsResponse = await apiClient.get<{ success: boolean; wards: any[] }>(
-          `${apiBase}/wards?page=1&limit=100`
-        );
-        
-        if (wardsResponse.success && wardsResponse.wards) {
-          setWards(wardsResponse.wards.map((w: any) => ({
+        const WARDS_PAGE_SIZE = 1000;
+        const firstWardsResponse = await apiClient.get<{
+          success: boolean;
+          wards: any[];
+          pagination?: { totalPages?: number };
+        }>(`${apiBase}/wards?page=1&limit=${WARDS_PAGE_SIZE}`);
+
+        const totalWardPages = firstWardsResponse.pagination?.totalPages || 1;
+        const allWards = [...(firstWardsResponse.wards || [])];
+
+        if (totalWardPages > 1) {
+          const remaining = await Promise.all(
+            Array.from({ length: totalWardPages - 1 }, (_, i) =>
+              apiClient.get<{ success: boolean; wards: any[] }>(
+                `${apiBase}/wards?page=${i + 2}&limit=${WARDS_PAGE_SIZE}`
+              ).then(r => r.wards || [])
+            )
+          );
+          allWards.push(...remaining.flat());
+        }
+
+        if (firstWardsResponse.success) {
+          setWards(allWards.map((w: any) => ({
             id: w.id,
             name: w.name,
           })));

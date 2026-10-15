@@ -710,10 +710,17 @@ export default function ZonalAdminDashboard() {
         throw new Error('Admin scope not found');
       }
 
-      // Fetch zone stats
-      const statsResponse = await apiClient.get<{ success: boolean; stats: any }>(
-        `${apiBase}/stats`
-      );
+      // Fetch stats, wards, ward admins, incidents, vote summary and the unread
+      // count together - they are independent, so running them in parallel turns
+      // the total latency into the slowest call rather than the sum.
+      const [statsResponse, adminsResponse, incidentsResponse, voteResponse] = await Promise.all([
+        apiClient.get<{ success: boolean; stats: any }>(`${apiBase}/stats`),
+        apiClient.get<{ success: boolean; wardAdmins: any[] }>(`${apiBase}/ward-admins`),
+        apiClient.get<{ success: boolean; incidents: any[] }>(`${apiBase}/incidents?page=1&limit=20`),
+        apiClient.get<{ success: boolean; summary: any[]; totalVotes: number }>(`${apiBase}/vote-summary`),
+        fetchWards(1, wardSearch),
+        fetchUnreadCount(),
+      ]);
 
       if (statsResponse.success && statsResponse.stats) {
         const s = statsResponse.stats;
@@ -732,40 +739,19 @@ export default function ZonalAdminDashboard() {
         });
       }
 
-      // Fetch first page of wards
-      await fetchWards(1, wardSearch);
-
-      // Fetch ward admins
-      const adminsResponse = await apiClient.get<{ success: boolean; wardAdmins: any[] }>(
-        `${apiBase}/ward-admins`
-      );
-
       if (adminsResponse.success && adminsResponse.wardAdmins) {
         setWardAdmins(adminsResponse.wardAdmins);
       }
 
-      // Fetch incidents (with pagination)
-      const incidentsResponse = await apiClient.get<{ success: boolean; incidents: any[] }>(
-        `${apiBase}/incidents?page=1&limit=20`
-      );
-
       if (incidentsResponse.success && incidentsResponse.incidents) {
         setIncidents(incidentsResponse.incidents);
       }
-
-      // Fetch vote summary
-      const voteResponse = await apiClient.get<{ success: boolean; summary: any[]; totalVotes: number }>(
-        `${apiBase}/vote-summary`
-      );
 
       if (voteResponse.success) {
         setVotesSummary(voteResponse.summary || []);
         setTotalVotes(voteResponse.totalVotes || 0);
         setLastUpdated(new Date().toISOString());
       }
-
-      // Fetch unread message count
-      await fetchUnreadCount();
 
       // ✅ Setup Socket.IO after initial data load
       setupSocketListeners();
