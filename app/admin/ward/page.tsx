@@ -27,10 +27,10 @@ import { ResultStatusCards } from '@/components/admin/ward/ResultStatusCards';
 import { PendingResultsTab } from '@/components/admin/ward/PendingResultsTab';
 import { PollingUnitsTab } from '@/components/admin/ward/PollingUnitsTab';
 import { AgentsTab } from '@/components/admin/ward/AgentsTab';
+import { WardAgentsMap } from '@/components/admin/ward/WardAgentsMap';
 import { IncidentsTab } from '@/components/admin/ward/IncidentsTab';
 import { PartiesQuickRef } from '@/components/admin/ward/PartiesQuickRef';
 import { NotificationsPanel } from '@/components/admin/NotificationsPanel';
-import { PollingUnitsMap, MapAgent, MapPollingUnit } from '@/components/admin/shared/PollingUnitsMap';
 
 // Import socket service
 import { getSocket, onConnectionChange, onSocketMessage, sendSocketMessage } from '@/lib/socket-service';
@@ -794,49 +794,6 @@ export default function WardAdminDashboard() {
     resultsSubmitted: agent.resultsSubmitted || 0
   })) || [];
 
-  const asCoord = (value: any): number | null => {
-    const n = Number(value);
-    return value !== null && value !== undefined && value !== '' && Number.isFinite(n) ? n : null;
-  };
-
-  const mapAgents: MapAgent[] = (dashboardData?.pollingAgents || []).map(agent => {
-    const updatedMs = agent.updatedAt ? new Date(agent.updatedAt).getTime() : 0;
-    const online = updatedMs > 0 && Date.now() - updatedMs <= AGENT_ONLINE_WINDOW_MS;
-    const lat = asCoord(agent.lastKnownLocation?.latitude);
-    const lng = asCoord(agent.lastKnownLocation?.longitude);
-    const hasCoords = lat !== null && lng !== null && (lat !== 0 || lng !== 0);
-    return {
-      id: agent.id,
-      name: agent.name,
-      pollingUnitName: agent.assignedPollingUnit?.name || 'Unassigned',
-      status: online ? 'Online' : 'Offline',
-      lastActive: hasCoords ? (online ? 'Just now' : 'Location stale') : 'No location',
-      lastKnownLocation: hasCoords ? { latitude: lat, longitude: lng } : null
-    };
-  });
-
-  const mapUnits: MapPollingUnit[] = [];
-  const seenUnitIds = new Set<string>();
-  (dashboardData?.pollingAgents || []).forEach(agent => {
-    const unit = agent.assignedPollingUnit;
-    if (!unit) return;
-    const lat = asCoord(unit.latitude);
-    const lng = asCoord(unit.longitude);
-    if (lat === null || lng === null || (lat === 0 && lng === 0)) return;
-    const unitId = (unit as any).id || unit.name;
-    if (seenUnitIds.has(unitId)) return;
-    seenUnitIds.add(unitId);
-    const updatedMs = agent.updatedAt ? new Date(agent.updatedAt).getTime() : 0;
-    mapUnits.push({
-      id: unitId,
-      name: unit.name,
-      code: (unit as any).code || undefined,
-      agentName: agent.name,
-      agentStatus: Date.now() - updatedMs <= AGENT_ONLINE_WINDOW_MS ? 'Online' : 'Offline',
-      location: { latitude: lat, longitude: lng }
-    });
-  });
-
   const handleApprove = async (resultId: string, comment: string) => {
     if (isSystemAdmin) {
       toast({
@@ -1162,14 +1119,7 @@ export default function WardAdminDashboard() {
           </TabsContent>
 
           <TabsContent value="map">
-            <PollingUnitsMap
-              pollingUnits={mapUnits}
-              agents={mapAgents}
-              role="ward"
-              height="calc(100vh - 340px)"
-              refreshing={refreshing}
-              onRefresh={() => fetchAllData(true)}
-            />
+            <WardAgentsMap height="calc(100vh - 340px)" />
           </TabsContent>
 
           <TabsContent value="incidents">
