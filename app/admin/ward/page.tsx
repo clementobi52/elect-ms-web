@@ -153,7 +153,11 @@ export default function WardAdminDashboard() {
       console.log('⚠️ Invalid agent status payload');
       return;
     }
-    
+
+    if (user?.wardId && payload.wardId && payload.wardId !== user.wardId) {
+      return;
+    }
+
     if (payload.online !== undefined && payload.offline !== undefined) {
       console.log(`📊 Updating stats - Online: ${payload.online}, Offline: ${payload.offline}`);
       setWardStats(prev => ({
@@ -179,34 +183,12 @@ export default function WardAdminDashboard() {
     }
     
     if (payload.agentId && payload.status) {
-      const isOnline = payload.status === 'Online' || payload.status === 'online';
-      console.log(`📊 Agent ${payload.agentId} status changed to: ${isOnline ? 'Online' : 'Offline'}`);
-      
-      setWardStats(prev => {
-        if (isOnline) {
-          return {
-            ...prev,
-            activeAgents: prev.activeAgents + 1,
-            offlineAgents: Math.max(0, prev.offlineAgents - 1)
-          };
-        } else {
-          return {
-            ...prev,
-            activeAgents: Math.max(0, prev.activeAgents - 1),
-            offlineAgents: prev.offlineAgents + 1
-          };
-        }
-      });
+      console.log(`📊 Agent ${payload.agentId} status changed to: ${payload.status}`);
       return;
     }
-    
+
     if (payload.agentId && (payload.latitude !== undefined || payload.location)) {
-      console.log(`📍 Agent ${payload.agentId} location update - marking as Online`);
-      setWardStats(prev => ({
-        ...prev,
-        activeAgents: prev.activeAgents + 1,
-        offlineAgents: Math.max(0, prev.offlineAgents - 1)
-      }));
+      console.log(`📍 Agent ${payload.agentId} location update`);
       return;
     }
     
@@ -228,7 +210,7 @@ export default function WardAdminDashboard() {
     }
     
     console.log('⚠️ Unrecognized agent status payload format:', payload);
-  }, []);
+  }, [user]);
 
   // ✅ Handle ward data update
   const handleWardDataUpdate = useCallback((payload: any) => {
