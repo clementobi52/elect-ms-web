@@ -45,7 +45,7 @@ import {
 } from '@/lib/types/ward-admin';
 import { ROLES } from '@/lib/types';
 import { withTenantHeaders } from '@/lib/tenant';
-import { API_BASE_URL } from '@/lib/config';
+import { API_BASE_URL, AGENT_ONLINE_WINDOW_MS } from '@/lib/config';
 
 // UUID validation
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -764,7 +764,7 @@ export default function WardAdminDashboard() {
   // Transform polling agents for UI
   const pollingUnits: PollingUnit[] = dashboardData?.pollingAgents?.map((agent, index) => {
     const isOnline = agent.updatedAt && 
-      new Date(agent.updatedAt).getTime() > Date.now() - 5 * 60 * 1000;
+      new Date(agent.updatedAt).getTime() > Date.now() - AGENT_ONLINE_WINDOW_MS;
     
     return {
       id: agent.id,

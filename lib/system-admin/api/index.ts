@@ -2,7 +2,7 @@
 
 import { Ward, Pagination } from '@/components/admin/system-admin/types';
 import { withTenantHeaders } from '@/lib/tenant';
-import { API_BASE_URL } from '@/lib/config';
+import { API_BASE_URL, AGENT_ONLINE_WINDOW_MS } from '@/lib/config';
 
 
 // Helper to get auth headers
@@ -88,7 +88,7 @@ export const fetchAllData = async (API_BASE_URL: string) => {
       const totals = raw.totals || {};
       const roles = raw.breakdown?.usersByRole || {};
       const resultStatuses = raw.breakdown?.resultsByStatus || {};
-      const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+      const fiveMinutesAgo = Date.now() - AGENT_ONLINE_WINDOW_MS;
 
       stats = {
         totalUsers: totals.users || 0,

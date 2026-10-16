@@ -56,3 +56,12 @@ export const DEFAULT_TENANT_SLUG = process.env.NEXT_PUBLIC_DEFAULT_TENANT || 'de
 export const PLATFORM_DOMAIN = (
   process.env.NEXT_PUBLIC_PLATFORM_DOMAIN || 'elect-ms.com'
 ).toLowerCase().replace(/^\.+|\.+$/g, '');
+
+/**
+ * How long after its last heartbeat an agent is still shown as Online.
+ *
+ * Keep in step with the backend's utils/presence.js, which uses the same window
+ * to decide when a connected agent's socket has gone quiet.
+ */
+export const AGENT_ONLINE_WINDOW_MS =
+  Number(process.env.NEXT_PUBLIC_AGENT_ONLINE_WINDOW_MS) || 2 * 60 * 1000;
