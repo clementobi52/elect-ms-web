@@ -5,8 +5,10 @@ export interface Agent {
   id: string;
   name: string;
   email: string;
+  username?: string | null;
   pollingUnitId?: string;
   pollingUnitName: string;
+  pollingUnitCode?: string | null;
   wardId?: string;
   wardName?: string;
   zoneId?: string;
@@ -16,6 +18,7 @@ export interface Agent {
   createdAt?: string;
   updatedAt?: string;
   resultsSubmitted?: number;
+  incidentsReported?: number;
   location?: {
     latitude: number;
     longitude: number;
