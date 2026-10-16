@@ -288,6 +288,21 @@ export const agentsApi = {
   },
 
   /**
+   * Update an agent's basic details (name / email)
+   */
+  updateAgent: async (
+    agentId: string,
+    data: { name?: string; email?: string }
+  ): Promise<{ success: boolean; message: string }> => {
+    const response = await apiClient.patch<any>(`/admin/agents/${agentId}`, data);
+
+    return {
+      success: true,
+      message: response?.message || 'Agent updated',
+    };
+  },
+
+  /**
    * Reconcile agent location with polling unit
    */
   reconcileLocation: async (agentId: string): Promise<{ 
@@ -323,6 +338,7 @@ export const useAgentsApi = () => {
     getAgentStats: agentsApi.getAgentStats,
     updateAgentStatus: agentsApi.updateAgentStatus,
     assignPollingUnit: agentsApi.assignPollingUnit,
+    updateAgent: agentsApi.updateAgent,
     reconcileLocation: agentsApi.reconcileLocation,
   };
 };
