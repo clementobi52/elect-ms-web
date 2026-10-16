@@ -15,7 +15,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
-import { Bell, AlertTriangle, Info, CheckCircle, MessageSquare, Mail, User, MapPin } from 'lucide-react';
+import { Bell, AlertTriangle, Info, CheckCircle, MessageSquare, Mail, User, MapPin, Wifi, WifiOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
 import { withTenantHeaders } from '@/lib/tenant';
@@ -56,7 +56,20 @@ interface MessageNotification {
   read: boolean;
 }
 
-type Notification = LocationNotification | MessageNotification;
+interface PresenceNotification {
+  id: string;
+  event: 'agent-online' | 'agent-offline';
+  severity: 'good' | 'info';
+  message: string;
+  timestamp: string;
+  agent: {
+    id: string;
+    name: string;
+  };
+  wardId?: string | null;
+}
+
+type Notification = LocationNotification | MessageNotification | PresenceNotification;
 
 interface NotificationsPanelProps {
   wardId?: string;
@@ -131,6 +144,30 @@ export function NotificationsPanel({ wardId, userId, userRole }: NotificationsPa
           duration: 5000,
         });
       }
+    };
+
+    const handleAgentPresence = (data: any) => {
+      if (!data?.agentId) return;
+
+      const online = data.status === 'Online';
+      const newNotification: PresenceNotification = {
+        id: `presence-${Date.now()}-${data.agentId}`,
+        event: online ? 'agent-online' : 'agent-offline',
+        severity: online ? 'good' : 'info',
+        message: `${data.agentName || 'An agent'} is now ${online ? 'online' : 'offline'}`,
+        timestamp: data.timestamp || new Date().toISOString(),
+        agent: { id: data.agentId, name: data.agentName || 'Agent' },
+        wardId: data.wardId ?? null,
+      };
+
+      setNotifications(prev => [newNotification, ...prev].slice(0, 50));
+      setUnreadCount(prev => prev + 1);
+
+      toast({
+        title: online ? 'Agent Online' : 'Agent Offline',
+        description: newNotification.message,
+        duration: online ? 4000 : 5000,
+      });
     };
 
     // Handle new messages from Socket.IO
@@ -208,6 +245,7 @@ export function NotificationsPanel({ wardId, userId, userRole }: NotificationsPa
     // Register event listeners
     socket.on('joined-ward', handleJoinedWard);
     socket.on('agent-location-alert', handleAgentAlert);
+    socket.on('agent-presence-change', handleAgentPresence);
     socket.on('new-message', handleNewMessage);
     socket.on('message-notification', handleMessageNotification);
     socket.on('connect_error', handleConnectError);
@@ -225,6 +263,7 @@ export function NotificationsPanel({ wardId, userId, userRole }: NotificationsPa
     return () => {
       socket.off('joined-ward', handleJoinedWard);
       socket.off('agent-location-alert', handleAgentAlert);
+      socket.off('agent-presence-change', handleAgentPresence);
       socket.off('new-message', handleNewMessage);
       socket.off('message-notification', handleMessageNotification);
       socket.off('connect_error', handleConnectError);
@@ -324,6 +363,10 @@ export function NotificationsPanel({ wardId, userId, userRole }: NotificationsPa
           return <AlertTriangle className="h-4 w-4 text-orange-500" />;
         case 'agent-critical':
           return <AlertTriangle className="h-4 w-4 text-red-500" />;
+        case 'agent-online':
+          return <Wifi className="h-4 w-4 text-green-500" />;
+        case 'agent-offline':
+          return <WifiOff className="h-4 w-4 text-gray-500" />;
         default:
           return <Info className="h-4 w-4 text-blue-500" />;
       }
@@ -375,6 +418,10 @@ export function NotificationsPanel({ wardId, userId, userRole }: NotificationsPa
           return 'Agent Warning';
         case 'agent-critical':
           return 'Critical Alert';
+        case 'agent-online':
+          return 'Agent Online';
+        case 'agent-offline':
+          return 'Agent Offline';
         default:
           return 'Alert';
       }
