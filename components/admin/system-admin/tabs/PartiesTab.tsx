@@ -34,7 +34,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, MoreVertical, Eye, Edit, Trash2, Search } from 'lucide-react';
+import { Plus, MoreVertical, Eye, Edit, Trash2, Search, Upload, X } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { withTenantHeaders } from '@/lib/tenant';
 import { Party } from '../types';
@@ -68,6 +68,8 @@ export const PartiesTab: React.FC<PartiesTabProps> = ({
     slogan: '',
     registrationNumber: '',
   });
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string>('');
 
   const filteredParties = parties.filter(party =>
     party.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -75,12 +77,15 @@ export const PartiesTab: React.FC<PartiesTabProps> = ({
     party.registrationNumber?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const getAuthHeaders = () => {
+  const getAuthHeaders = (includeContentType: boolean = true) => {
     const token = localStorage.getItem('authToken');
-    return withTenantHeaders({
+    const headers: any = {
       'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    });
+    };
+    if (includeContentType) {
+      headers['Content-Type'] = 'application/json';
+    }
+    return withTenantHeaders(headers);
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -90,18 +95,25 @@ export const PartiesTab: React.FC<PartiesTabProps> = ({
     try {
       const token = localStorage.getItem('authToken');
       
-      // Log for debugging
-      console.log('Creating party with data:', formData);
-      console.log('Auth token:', token ? 'Present' : 'Missing');
-
       if (!token) {
         throw new Error('No authentication token found. Please log in again.');
       }
 
+      const formDataToSend = new FormData();
+      formDataToSend.append('name', formData.name);
+      formDataToSend.append('slogan', formData.slogan || '');
+      formDataToSend.append('registrationNumber', formData.registrationNumber || '');
+      if (formData.logoUrl) {
+        formDataToSend.append('logoUrl', formData.logoUrl);
+      }
+      if (logoFile) {
+        formDataToSend.append('logo', logoFile);
+      }
+
       const response = await fetch(`${API_BASE_URL}/parties/add`, {
         method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(formData),
+        headers: getAuthHeaders(false),
+        body: formDataToSend,
       });
 
       // Log response status
@@ -125,6 +137,8 @@ export const PartiesTab: React.FC<PartiesTabProps> = ({
       
       setIsCreateOpen(false);
       setFormData({ name: '', logoUrl: '', slogan: '', registrationNumber: '' });
+      setLogoFile(null);
+      setLogoPreview('');
       onRefresh();
     } catch (error) {
       console.error('Error creating party:', error);
@@ -150,10 +164,21 @@ export const PartiesTab: React.FC<PartiesTabProps> = ({
         throw new Error('No authentication token found. Please log in again.');
       }
 
+      const formDataToSend = new FormData();
+      formDataToSend.append('name', formData.name);
+      formDataToSend.append('slogan', formData.slogan || '');
+      formDataToSend.append('registrationNumber', formData.registrationNumber || '');
+      if (formData.logoUrl) {
+        formDataToSend.append('logoUrl', formData.logoUrl);
+      }
+      if (logoFile) {
+        formDataToSend.append('logo', logoFile);
+      }
+
       const response = await fetch(`${API_BASE_URL}/parties/${selectedParty.id}`, {
         method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(formData),
+        headers: getAuthHeaders(false),
+        body: formDataToSend,
       });
 
       if (!response.ok) {
@@ -168,6 +193,8 @@ export const PartiesTab: React.FC<PartiesTabProps> = ({
       setIsEditOpen(false);
       setSelectedParty(null);
       setFormData({ name: '', logoUrl: '', slogan: '', registrationNumber: '' });
+      setLogoFile(null);
+      setLogoPreview('');
       onRefresh();
     } catch (error) {
       console.error('Error updating party:', error);
@@ -194,7 +221,36 @@ export const PartiesTab: React.FC<PartiesTabProps> = ({
       slogan: party.slogan || '',
       registrationNumber: party.registrationNumber || '',
     });
+    setLogoFile(null);
+    setLogoPreview(party.logoUrl || '');
     setIsEditOpen(true);
+  };
+
+  const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: 'Error',
+          description: 'File size must be less than 5MB',
+          variant: 'destructive',
+        });
+        return;
+      }
+      setLogoFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setLogoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+      setFormData({ ...formData, logoUrl: '' });
+    }
+  };
+
+  const handleRemoveLogo = () => {
+    setLogoFile(null);
+    setLogoPreview('');
+    setFormData({ ...formData, logoUrl: '' });
   };
 
   return (
@@ -327,12 +383,52 @@ export const PartiesTab: React.FC<PartiesTabProps> = ({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="logoUrl">Logo URL</Label>
+                <Label>Party Logo</Label>
+                {logoPreview ? (
+                  <div className="relative w-24 h-24 mx-auto">
+                    <img
+                      src={logoPreview}
+                      alt="Logo preview"
+                      className="w-full h-full object-cover rounded-full border-2 border-primary/20"
+                    />
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon"
+                      className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
+                      onClick={handleRemoveLogo}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
+                    <Input
+                      id="logoFile"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoFileChange}
+                      className="hidden"
+                    />
+                    <Label htmlFor="logoFile" className="cursor-pointer flex flex-col items-center gap-2">
+                      <Upload className="h-8 w-8 text-gray-400" />
+                      <span className="text-sm text-gray-600">Upload logo image</span>
+                      <span className="text-xs text-gray-400">PNG, JPG, GIF up to 5MB</span>
+                    </Label>
+                  </div>
+                )}
+                <div className="text-center text-xs text-gray-500">or</div>
                 <Input
-                  id="logoUrl"
                   value={formData.logoUrl}
-                  onChange={(e) => setFormData({ ...formData, logoUrl: e.target.value })}
-                  placeholder="https://example.com/logo.png"
+                  onChange={(e) => {
+                    setFormData({ ...formData, logoUrl: e.target.value });
+                    if (e.target.value) {
+                      setLogoFile(null);
+                      setLogoPreview(e.target.value);
+                    }
+                  }}
+                  placeholder="Enter logo URL"
+                  disabled={!!logoFile}
                 />
               </div>
               <div className="space-y-2">
@@ -386,11 +482,52 @@ export const PartiesTab: React.FC<PartiesTabProps> = ({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-logoUrl">Logo URL</Label>
+                <Label>Party Logo</Label>
+                {logoPreview ? (
+                  <div className="relative w-24 h-24 mx-auto">
+                    <img
+                      src={logoPreview}
+                      alt="Logo preview"
+                      className="w-full h-full object-cover rounded-full border-2 border-primary/20"
+                    />
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon"
+                      className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
+                      onClick={handleRemoveLogo}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
+                    <Input
+                      id="edit-logoFile"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoFileChange}
+                      className="hidden"
+                    />
+                    <Label htmlFor="edit-logoFile" className="cursor-pointer flex flex-col items-center gap-2">
+                      <Upload className="h-8 w-8 text-gray-400" />
+                      <span className="text-sm text-gray-600">Upload logo image</span>
+                      <span className="text-xs text-gray-400">PNG, JPG, GIF up to 5MB</span>
+                    </Label>
+                  </div>
+                )}
+                <div className="text-center text-xs text-gray-500">or</div>
                 <Input
-                  id="edit-logoUrl"
                   value={formData.logoUrl}
-                  onChange={(e) => setFormData({ ...formData, logoUrl: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, logoUrl: e.target.value });
+                    if (e.target.value) {
+                      setLogoFile(null);
+                      setLogoPreview(e.target.value);
+                    }
+                  }}
+                  placeholder="Enter logo URL"
+                  disabled={!!logoFile}
                 />
               </div>
               <div className="space-y-2">
