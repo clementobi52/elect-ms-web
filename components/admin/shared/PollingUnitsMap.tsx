@@ -111,7 +111,7 @@ export function PollingUnitsMap({
   const [currentStyle, setCurrentStyle] = useState<MapStyleKey>('satellite');
   const [showUnits, setShowUnits] = useState(true);
   const [showAgentLayer, setShowAgentLayer] = useState(showAgents);
-  const [onlineOnly, setOnlineOnly] = useState(false);
+  const [onlineOnly, setOnlineOnly] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
 
   const unitsWithCoords = pollingUnits.filter(u => hasCoords(u.location));
