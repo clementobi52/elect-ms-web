@@ -109,6 +109,7 @@ export const GeoScopeDialog: React.FC<GeoScopeDialogProps> = ({
   const [parentLga, setParentLga] = useState('');
   const [parentWard, setParentWard] = useState('');
   const [anchorId, setAnchorId] = useState('');
+  const [selectedLgaIds, setSelectedLgaIds] = useState<string[]>([]);
 
   const [states, setStates] = useState<GeoOption[]>([]);
   const [lgas, setLgas] = useState<GeoOption[]>([]);
@@ -141,6 +142,7 @@ export const GeoScopeDialog: React.FC<GeoScopeDialogProps> = ({
     setParentLga('');
     setParentWard('');
     setAnchorId('');
+    setSelectedLgaIds([]);
     setCatalogError('');
 
     // The states list tops every cascade, so it is loaded with the scope.
@@ -226,6 +228,7 @@ export const GeoScopeDialog: React.FC<GeoScopeDialogProps> = ({
     setParentLga('');
     setParentWard('');
     setAnchorId('');
+    setSelectedLgaIds([]);
     setCatalogError('');
   };
 
@@ -248,9 +251,38 @@ export const GeoScopeDialog: React.FC<GeoScopeDialogProps> = ({
   const addNeedsWard = level === 'polling_unit';
 
   const addDisabled =
-    !candidateOptions.length || !anchorId || (addNeedsWard && !parentWard);
+    level === 'lga'
+      ? !(parentState && selectedLgaIds.length > 0)
+      : !candidateOptions.length || !anchorId || (addNeedsWard && !parentWard);
 
   const handleAdd = () => {
+    if (level === 'lga' && parentState && selectedLgaIds.length > 0) {
+      const toAdd = selectedLgaIds
+        .filter((id) => !existingKeys.has(`lga:${id}`))
+        .map((id) => ({
+          level: 'lga' as GeoScopeLevel,
+          geoId: id,
+          label: lgas.find((l) => l.id === id)?.name ?? null,
+        }));
+
+      if (toAdd.length === 0) {
+        toast({ title: 'Already in scope', description: 'All selected LGAs are already anchors.' });
+        setSelectedLgaIds([]);
+        return;
+      }
+
+      setScope((prev) =>
+        [...prev, ...toAdd].sort(
+          (a, b) => LEVELS.findIndex((l) => l.value === a.level) - LEVELS.findIndex((l) => l.value === b.level)
+        )
+      );
+      setSelectedLgaIds([]);
+      if (toAdd.length < selectedLgaIds.length) {
+        toast({ title: 'Some already in scope', description: 'Skipped LGAs already added.' });
+      }
+      return;
+    }
+
     if (!addDisabled && anchorId) {
       const key = `${level}:${anchorId}`;
       if (existingKeys.has(key)) {
@@ -264,7 +296,6 @@ export const GeoScopeDialog: React.FC<GeoScopeDialogProps> = ({
           (a, b) => LEVELS.findIndex((l) => l.value === a.level) - LEVELS.findIndex((l) => l.value === b.level)
         )
       );
-      // Keep parent context for adding more LGAs/wards under same parent
       setAnchorId('');
     }
   };
@@ -480,7 +511,62 @@ export const GeoScopeDialog: React.FC<GeoScopeDialogProps> = ({
                   </div>
                 ) : null}
 
-                {addNeedsLga ? (
+                {level === 'lga' ? (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      LGAs
+                    </label>
+                    <Select
+                      value=""
+                      onValueChange={(v) => {
+                        if (v && !selectedLgaIds.includes(v)) {
+                          setSelectedLgaIds((prev) => [...prev, v]);
+                        }
+                      }}
+                      disabled={!parentState || lgas.length === 0}
+                    >
+                      <SelectTrigger className="w-56">
+                        <SelectValue
+                          placeholder={
+                            selectedLgaIds.length > 0
+                              ? `${selectedLgaIds.length} selected`
+                              : parentState
+                                ? 'Select LGAs'
+                                : 'Choose a state first'
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {lgas
+                          .filter((l) => !selectedLgaIds.includes(l.id))
+                          .map((l) => (
+                            <SelectItem key={l.id} value={l.id}>
+                              {l.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    {selectedLgaIds.length > 0 ? (
+                      <div className="flex flex-wrap gap-1 max-w-[320px]">
+                        {selectedLgaIds.map((id) => {
+                          const name = lgas.find((l) => l.id === id)?.name || id;
+                          return (
+                            <Badge key={id} variant="secondary" className="gap-1">
+                              {name}
+                              <button
+                                type="button"
+                                className="ml-1 text-muted-foreground hover:text-foreground"
+                                onClick={() => setSelectedLgaIds((prev) => prev.filter((x) => x !== id))}
+                              >
+                                ×
+                              </button>
+                            </Badge>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : addNeedsLga ? (
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground">
                       LGA
@@ -539,29 +625,31 @@ export const GeoScopeDialog: React.FC<GeoScopeDialogProps> = ({
                   </div>
                 ) : null}
 
-                <div className="min-w-48 flex-1 space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    {LEVEL_LABEL[level]}
-                  </label>
-                  <Select value={anchorId} onValueChange={setAnchorId} disabled={!candidateOptions.length}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue
-                        placeholder={
-                          !candidateOptions.length
-                            ? 'Choose the parent first'
-                            : `Choose the ${LEVEL_LABEL[level].toLowerCase()} to anchor`
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {candidateOptions.map((o) => (
-                        <SelectItem key={o.id} value={o.id}>
-                          {o.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {level !== 'lga' ? (
+                  <div className="min-w-48 flex-1 space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      {LEVEL_LABEL[level]}
+                    </label>
+                    <Select value={anchorId} onValueChange={setAnchorId} disabled={!candidateOptions.length}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue
+                          placeholder={
+                            !candidateOptions.length
+                              ? 'Choose the parent first'
+                              : `Choose the ${LEVEL_LABEL[level].toLowerCase()} to anchor`
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {candidateOptions.map((o) => (
+                          <SelectItem key={o.id} value={o.id}>
+                            {o.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
 
                 <Button onClick={handleAdd} disabled={addDisabled}>
                   <Plus className="mr-2 h-4 w-4" aria-hidden />
