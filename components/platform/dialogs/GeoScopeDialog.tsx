@@ -353,7 +353,7 @@ export const GeoScopeDialog: React.FC<GeoScopeDialogProps> = ({
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden />
           </div>
         ) : (
-          <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-5">
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 space-y-5">
             {error ? (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
@@ -381,7 +381,7 @@ export const GeoScopeDialog: React.FC<GeoScopeDialogProps> = ({
                     Reset
                   </Button>
                 </div>
-                <ScrollArea className="max-h-[200px]">
+                <div className="max-h-[180px] overflow-y-auto rounded-md border">
                   <div className="space-y-1.5 pr-3">
                     {scope.map((row) => {
                       const key = `${row.level}:${row.geoId}`;
@@ -418,7 +418,7 @@ export const GeoScopeDialog: React.FC<GeoScopeDialogProps> = ({
                       );
                     })}
                   </div>
-                </ScrollArea>
+                </div>
                 <p className="text-xs text-muted-foreground">
                   Saving replaces the whole list. To widen the tenant’s view,
                   remove anchors — an anchor covers every place under it.
