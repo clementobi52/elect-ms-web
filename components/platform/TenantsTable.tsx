@@ -41,6 +41,7 @@ import {
 import { useToast } from '@/components/ui/use-toast';
 import { TenantFormDialog } from './dialogs/TenantFormDialog';
 import { GeoScopeDialog } from './dialogs/GeoScopeDialog';
+import { TenantUsersDialog } from './dialogs/TenantUsersDialog';
 import { ConfirmDialog } from './dialogs/ConfirmDialog';
 import {
   deleteTenant,
@@ -72,6 +73,7 @@ export default function TenantsTable() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<PlatformTenant | null>(null);
   const [scopeTenant, setScopeTenant] = useState<PlatformTenant | null>(null);
+  const [usersTenant, setUsersTenant] = useState<PlatformTenant | null>(null);
   const [pending, setPending] = useState<PendingAction>(null);
   const [actionError, setActionError] = useState('');
 
@@ -352,6 +354,14 @@ export default function TenantsTable() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          title="Users"
+                          onClick={() => setUsersTenant(tenant)}
+                        >
+                          <Users className="h-4 w-4" aria-hidden />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           title="Geographic scope"
                           onClick={() => setScopeTenant(tenant)}
                         >
@@ -464,6 +474,14 @@ export default function TenantsTable() {
           if (!open) setScopeTenant(null);
         }}
         tenant={scopeTenant}
+      />
+
+      <TenantUsersDialog
+        open={usersTenant !== null}
+        onOpenChange={(open) => {
+          if (!open) setUsersTenant(null);
+        }}
+        tenant={usersTenant}
       />
 
       <ConfirmDialog
