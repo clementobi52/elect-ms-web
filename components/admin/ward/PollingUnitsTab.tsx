@@ -73,8 +73,10 @@ export function PollingUnitsTab({ wardId }: PollingUnitsTabProps) {
     const newSocket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
       // Both the token and the tenant are required: io.use() resolves the
       // tenant from the handshake and refuses the connection with 400 if the
       // slug is missing, then checks it against the token's tenantId.
@@ -97,13 +99,37 @@ export function PollingUnitsTab({ wardId }: PollingUnitsTabProps) {
       });
     });
 
-    newSocket.on('disconnect', () => {
-      console.log('🔌 PollingUnitsTab: Socket.IO disconnected');
+    newSocket.on('disconnect', (reason) => {
+      console.log('🔌 PollingUnitsTab: Socket.IO disconnected:', reason);
       setIsConnected(false);
     });
 
     newSocket.on('connect_error', (error) => {
       console.error('❌ PollingUnitsTab: Socket.IO connection error:', error.message);
+      setIsConnected(false);
+    });
+
+    newSocket.io.on('reconnect', (attempt) => {
+      console.log('🔁 PollingUnitsTab: Socket.IO reconnected after', attempt, 'attempts');
+      setIsConnected(true);
+      newSocket.emit('join-ward', {
+        wardId: targetWardId,
+        userId: user?.id,
+        role: user?.role,
+        userName: user?.name,
+      });
+      newSocket.emit('request-polling-units-data', {
+        wardId: targetWardId,
+      });
+    });
+
+    newSocket.io.on('reconnect_attempt', (attempt) => {
+      console.log('🔁 PollingUnitsTab: Reconnection attempt:', attempt);
+      setIsConnected(false);
+    });
+
+    newSocket.io.on('reconnect_failed', () => {
+      console.log('❌ PollingUnitsTab: Reconnection failed, will keep retrying...');
       setIsConnected(false);
     });
 
@@ -333,8 +359,40 @@ export function PollingUnitsTab({ wardId }: PollingUnitsTabProps) {
     };
   }, [targetWardId]);
 
+  // ✅ Auto-reconnect when network/tab comes back online
+  useEffect(() => {
+    const tryReconnect = () => {
+      if (!isConnected && targetWardId) {
+        console.log('🔁 Attempting auto-reconnect (online/focus/visibility)');
+        setupSocket();
+        fetchPollingUnits(true);
+      }
+    };
+
+    const handleOnline = () => tryReconnect();
+    const handleFocus = () => tryReconnect();
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        tryReconnect();
+      }
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [isConnected, targetWardId, setupSocket]);
+
   // ✅ Reconnect handler
   const handleReconnect = () => {
+    if (socket) {
+      socket.disconnect();
+    }
     setupSocket();
     fetchPollingUnits(true);
   };
