@@ -251,10 +251,11 @@ export const GeoScopeDialog: React.FC<GeoScopeDialogProps> = ({
     !candidateOptions.length || !anchorId || (addNeedsWard && !parentWard);
 
   const handleAdd = () => {
-    if (!addDisabled) {
+    if (!addDisabled && anchorId) {
       const key = `${level}:${anchorId}`;
       if (existingKeys.has(key)) {
         toast({ title: 'Already in scope', description: 'That place is already an anchor.' });
+        setAnchorId('');
         return;
       }
       const label = candidateOptions.find((o) => o.id === anchorId)?.name ?? null;
@@ -263,6 +264,7 @@ export const GeoScopeDialog: React.FC<GeoScopeDialogProps> = ({
           (a, b) => LEVELS.findIndex((l) => l.value === a.level) - LEVELS.findIndex((l) => l.value === b.level)
         )
       );
+      // Keep parent context for adding more LGAs/wards under same parent
       setAnchorId('');
     }
   };
@@ -337,7 +339,7 @@ export const GeoScopeDialog: React.FC<GeoScopeDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="max-h-[90vh] overflow-hidden flex flex-col sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Geographic scope — {tenant?.name}</DialogTitle>
           <DialogDescription>
@@ -351,7 +353,7 @@ export const GeoScopeDialog: React.FC<GeoScopeDialogProps> = ({
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden />
           </div>
         ) : (
-          <div className="space-y-5">
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-5">
             {error ? (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
@@ -379,7 +381,7 @@ export const GeoScopeDialog: React.FC<GeoScopeDialogProps> = ({
                     Reset
                   </Button>
                 </div>
-                <ScrollArea className="max-h-52">
+                <ScrollArea className="max-h-[200px]">
                   <div className="space-y-1.5 pr-3">
                     {scope.map((row) => {
                       const key = `${row.level}:${row.geoId}`;
@@ -592,7 +594,7 @@ export const GeoScopeDialog: React.FC<GeoScopeDialogProps> = ({
           </div>
         )}
 
-        <DialogFooter>
+        <DialogFooter className="flex-shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading || saving}>
             Cancel
           </Button>
