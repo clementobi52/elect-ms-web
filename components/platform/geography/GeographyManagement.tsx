@@ -28,10 +28,10 @@ export default function GeographyManagement() {
     try {
       const token = getPlatformToken();
       const [zonesRes, wardsRes, pusRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/platform/zones`, {
+        fetch(`${API_BASE_URL}/platform/zones?limit=1`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        fetch(`${API_BASE_URL}/platform/wards`, {
+        fetch(`${API_BASE_URL}/platform/wards?limit=1`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
         fetch(`${API_BASE_URL}/platform/polling-units?limit=1`, {
