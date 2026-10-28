@@ -67,11 +67,11 @@ export default function WardsTab() {
   const fetchZones = async () => {
     try {
       const token = getPlatformToken();
-      const res = await fetch(`${API_BASE_URL}/platform/zones`, {
+      const res = await fetch(`${API_BASE_URL}/platform/zones?limit=1000`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      setZones(Array.isArray(data.zones) ? data.zones : Array.isArray(data) ? data : []);
+      setZones(Array.isArray(data.zones) ? data.zones : Array.isArray(data) ? data : (Array.isArray(data.items) ? data.items : []));
     } catch (error) {
       console.error('Error fetching zones:', error);
     }
