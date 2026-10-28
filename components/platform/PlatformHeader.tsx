@@ -8,7 +8,7 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
-import { Building2, LogOut, Shield } from 'lucide-react';
+import { Building2, LogOut, Shield, Flag, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -62,6 +62,14 @@ export default function PlatformHeader({ title, subtitle, actions }: PlatformHea
         </div>
 
         <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" onClick={() => router.push('/platform/parties')}>
+            <Flag className="h-4 w-4 mr-2" />
+            Parties
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => router.push('/platform/geography')}>
+            <MapPin className="h-4 w-4 mr-2" />
+            Geography
+          </Button>
           {actions}
           <div className="flex items-center gap-2 border-l pl-3">
             <Avatar className="h-8 w-8">
