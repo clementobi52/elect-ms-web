@@ -38,7 +38,7 @@ import { Plus, MoreVertical, Eye, Edit, Trash2, Search, Upload, X } from 'lucide
 import { useToast } from '@/components/ui/use-toast';
 import { withTenantHeaders } from '@/lib/tenant';
 import { Party } from '../types';
-import { API_BASE_URL } from '@/lib/config';
+import { API_BASE_URL, API_ORIGIN } from '@/lib/config';
 
 interface PartiesTabProps {
   parties: Party[];
@@ -86,6 +86,12 @@ export const PartiesTab: React.FC<PartiesTabProps> = ({
       headers['Content-Type'] = 'application/json';
     }
     return withTenantHeaders(headers);
+  };
+
+  const getImageUrl = (url: string | undefined) => {
+    if (!url) return '';
+    if (url.startsWith('http')) return url;
+    return `${API_ORIGIN}${url.startsWith('/') ? url : '/' + url}`;
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -306,7 +312,7 @@ export const PartiesTab: React.FC<PartiesTabProps> = ({
                       {party.logoUrl ? (
                         <div className="h-10 w-10 rounded-full overflow-hidden bg-gray-100">
                           <img
-                            src={party.logoUrl}
+                            src={getImageUrl(party.logoUrl)}
                             alt={party.name}
                             className="h-full w-full object-cover"
                             onError={(e) => {
@@ -387,7 +393,7 @@ export const PartiesTab: React.FC<PartiesTabProps> = ({
                 {logoPreview ? (
                   <div className="relative w-24 h-24 mx-auto">
                     <img
-                      src={logoPreview}
+                      src={getImageUrl(logoPreview)}
                       alt="Logo preview"
                       className="w-full h-full object-cover rounded-full border-2 border-primary/20"
                     />
@@ -486,7 +492,7 @@ export const PartiesTab: React.FC<PartiesTabProps> = ({
                 {logoPreview ? (
                   <div className="relative w-24 h-24 mx-auto">
                     <img
-                      src={logoPreview}
+                      src={getImageUrl(logoPreview)}
                       alt="Logo preview"
                       className="w-full h-full object-cover rounded-full border-2 border-primary/20"
                     />
