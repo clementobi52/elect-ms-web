@@ -55,9 +55,9 @@ export default function PollingUnitsTab() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      setPollingUnits(Array.isArray(data.pollingUnits) ? data.pollingUnits : []);
-      setTotal(data.total || 0);
-      setTotalPages(data.totalPages || Math.ceil((data.total || 0) / limit));
+      setPollingUnits(Array.isArray(data.pollingUnits) ? data.pollingUnits : Array.isArray(data.data) ? data.data : []);
+      setTotal(data.total || data.pagination?.total || 0);
+      setTotalPages(data.totalPages || data.pagination?.totalPages || Math.ceil((data.total || data.pagination?.total || 0) / limit));
     } catch (error) {
       console.error('Error fetching polling units:', error);
       toast({ title: 'Error', description: 'Failed to fetch polling units', variant: 'destructive' });
