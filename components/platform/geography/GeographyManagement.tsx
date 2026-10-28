@@ -47,8 +47,8 @@ export default function GeographyManagement() {
         zones: zonesData.total || zonesData.zones?.length || zonesData.data?.length || zonesData.count || 0,
         wards: wardsData.total || wardsData.pagination?.total || wardsData.wards?.length || wardsData.data?.length || wardsData.count || 0,
         pollingUnits: pusData.total || pusData.pagination?.total || pusData.stats?.total || pusData.count || 0,
-        withResults: pusData.stats?.withResults || 0,
-        verified: pusData.stats?.verifiedResults || 0,
+        withResults: pusData.stats?.withResults == null ? 0 : pusData.stats.withResults,
+        verified: pusData.stats?.verifiedResults == null ? 0 : pusData.stats.verifiedResults,
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
