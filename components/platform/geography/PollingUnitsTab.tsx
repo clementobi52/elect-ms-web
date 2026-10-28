@@ -75,7 +75,7 @@ export default function PollingUnitsTab() {
       });
       if (response.ok) {
         const data = await response.json();
-        setPollingUnits(data.pollingUnits || []);
+        setPollingUnits(data.pollingUnits || data.data || []);
       }
     } catch (error) {
       console.error('Error fetching polling units:', error);

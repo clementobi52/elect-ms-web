@@ -68,7 +68,7 @@ export default function ZonesTab() {
       });
       if (response.ok) {
         const data = await response.json();
-        setZones(data.zones || []);
+        setZones(data.zones || data.data || []);
       }
     } catch (error) {
       console.error('Error fetching zones:', error);

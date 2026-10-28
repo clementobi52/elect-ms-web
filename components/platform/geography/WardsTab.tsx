@@ -77,7 +77,7 @@ export default function WardsTab() {
       });
       if (response.ok) {
         const data = await response.json();
-        setWards(data.wards || []);
+        setWards(data.wards || data.data || []);
       }
     } catch (error) {
       console.error('Error fetching wards:', error);
