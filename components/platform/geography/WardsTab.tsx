@@ -53,8 +53,8 @@ export default function WardsTab() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      setWards(data.wards || data || []);
-      setTotal(data.total || (Array.isArray(data) ? data.length : 0));
+      setWards(Array.isArray(data.wards) ? data.wards : Array.isArray(data) ? data : []);
+      setTotal(data.total || (Array.isArray(data.zones) ? data.zones.length : Array.isArray(data.wards) ? data.wards.length : Array.isArray(data) ? data.length : 0));
       setTotalPages(data.totalPages || 1);
     } catch (error) {
       console.error('Error fetching wards:', error);
@@ -71,7 +71,7 @@ export default function WardsTab() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      setZones(data.zones || data || []);
+      setZones(Array.isArray(data.zones) ? data.zones : Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching zones:', error);
     }

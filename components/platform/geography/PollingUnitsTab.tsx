@@ -55,7 +55,7 @@ export default function PollingUnitsTab() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      setPollingUnits(data.pollingUnits || []);
+      setPollingUnits(Array.isArray(data.pollingUnits) ? data.pollingUnits : []);
       setTotal(data.total || 0);
       setTotalPages(data.totalPages || Math.ceil((data.total || 0) / limit));
     } catch (error) {
@@ -73,7 +73,7 @@ export default function PollingUnitsTab() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      setWards(data.wards || data || []);
+      setWards(Array.isArray(data.wards) ? data.wards : Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching wards:', error);
     }

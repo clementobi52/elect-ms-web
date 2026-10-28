@@ -50,8 +50,8 @@ export default function ZonesTab() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      setZones(data.zones || data || []);
-      setTotal(data.total || (Array.isArray(data) ? data.length : 0));
+      setZones(Array.isArray(data.zones) ? data.zones : Array.isArray(data) ? data : []);
+      setTotal(data.total || (Array.isArray(data.zones) ? data.zones.length : Array.isArray(data.wards) ? data.wards.length : Array.isArray(data) ? data.length : 0));
       setTotalPages(data.totalPages || 1);
     } catch (error) {
       console.error('Error fetching zones:', error);
