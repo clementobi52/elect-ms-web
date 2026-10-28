@@ -90,7 +90,7 @@ export const PartiesTab: React.FC<PartiesTabProps> = ({
 
   const getImageUrl = (url: string | undefined) => {
     if (!url) return '';
-    if (url.startsWith('http')) return url;
+    if (url.startsWith('http') || url.startsWith('data:')) return url;
     return `${API_ORIGIN}${url.startsWith('/') ? url : '/' + url}`;
   };
 
