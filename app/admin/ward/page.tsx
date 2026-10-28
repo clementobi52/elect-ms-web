@@ -993,7 +993,7 @@ export default function WardAdminDashboard() {
   return (
     <div className="flex flex-col min-h-screen">
       <AdminHeader 
-        title="Ward Admin Dashboard" 
+        title={wardName ? `${wardName} Ward Admin Dashboard` : "Ward Admin Dashboard"} 
         subtitle={`Managing ${wardName || 'Ward'} ${!isConnected ? '🔴 Offline' : '🟢 Live'}`}
         hideNotifications={true}
         actions={
