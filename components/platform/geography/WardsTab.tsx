@@ -53,9 +53,9 @@ export default function WardsTab() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      setWards(Array.isArray(data.wards) ? data.wards : Array.isArray(data) ? data : []);
-      setTotal(data.total || (Array.isArray(data.zones) ? data.zones.length : Array.isArray(data.wards) ? data.wards.length : Array.isArray(data) ? data.length : 0));
-      setTotalPages(data.totalPages || 1);
+      setWards(Array.isArray(data.wards) ? data.wards : Array.isArray(data.data) ? data.data : []);
+      setTotal(data.total || data.pagination?.total || (Array.isArray(data.wards) ? data.wards.length : Array.isArray(data.data) ? data.data.length : 0));
+      setTotalPages(data.totalPages || data.pagination?.totalPages || 1);
     } catch (error) {
       console.error('Error fetching wards:', error);
       toast({ title: 'Error', description: 'Failed to fetch wards', variant: 'destructive' });
