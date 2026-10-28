@@ -49,7 +49,7 @@ export default function WardsTab() {
     try {
       setLoading(true);
       const token = getPlatformToken();
-      const res = await fetch(`${API_BASE_URL}/platform/wards?search=${search}&page=${page}&limit=50`, {
+      const res = await fetch(`${API_BASE_URL}/platform/wards/paginated?search=${search}&page=${page}&limit=50`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();

@@ -46,7 +46,7 @@ export default function ZonesTab() {
     try {
       setLoading(true);
       const token = getPlatformToken();
-      const res = await fetch(`${API_BASE_URL}/platform/zones?search=${search}&page=${page}&limit=50`, {
+      const res = await fetch(`${API_BASE_URL}/platform/zones/paginated?search=${search}&page=${page}&limit=50`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
