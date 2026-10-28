@@ -1,84 +1,66 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import React, { useEffect, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Plus, Search, Edit, Trash2, Eye } from 'lucide-react';
+import { getPlatformToken } from '@/lib/platform/session';
+import { API_BASE_URL } from '@/lib/config';
+import { useToast } from '@/hooks/use-toast';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, MoreVertical, Edit, Trash2, Search } from 'lucide-react';
-import { useToast } from '@/components/ui/use-toast';
-import { getPlatformToken } from '@/lib/platform/session';
-import { API_BASE_URL } from '@/lib/config';
-
-interface PollingUnit {
-  id: string;
-  name: string;
-  code?: string;
-  wardId?: string;
-  Ward?: { name: string };
-}
-
-interface Ward {
-  id: string;
-  name: string;
-}
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
+import { Badge } from '@/components/ui/badge';
 
 export default function PollingUnitsTab() {
   const { toast } = useToast();
-  const [pollingUnits, setPollingUnits] = useState<PollingUnit[]>([]);
-  const [wards, setWards] = useState<Ward[]>([]);
+  const [pollingUnits, setPollingUnits] = useState<any[]>([]);
+  const [wards, setWards] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isEditOpen, setIsEditOpen] = useState(false);
-  const [selectedPU, setSelectedPU] = useState<PollingUnit | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [formLoading, setFormLoading] = useState(false);
-  const [formData, setFormData] = useState({ name: '', code: '', wardId: '' });
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [limit] = useState(50);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingPU, setEditingPU] = useState<any>(null);
+  const [formData, setFormData] = useState({ name: '', code: '', wardId: '', address: '' });
+
+  useEffect(() => {
+    fetchPollingUnits();
+    fetchWards();
+  }, [page, search]);
 
   const fetchPollingUnits = async () => {
     try {
+      setLoading(true);
       const token = getPlatformToken();
-      const response = await fetch(`${API_BASE_URL}/platform/polling-units`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+      const res = await fetch(`${API_BASE_URL}/platform/polling-units?search=${search}&page=${page}&limit=${limit}`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
-      if (response.ok) {
-        const data = await response.json();
-        setPollingUnits(data.pollingUnits || data.data || []);
-      }
+      const data = await res.json();
+      setPollingUnits(data.pollingUnits || []);
+      setTotal(data.total || 0);
+      setTotalPages(data.totalPages || Math.ceil((data.total || 0) / limit));
     } catch (error) {
       console.error('Error fetching polling units:', error);
+      toast({ title: 'Error', description: 'Failed to fetch polling units', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -87,314 +69,206 @@ export default function PollingUnitsTab() {
   const fetchWards = async () => {
     try {
       const token = getPlatformToken();
-      const response = await fetch(`${API_BASE_URL}/platform/wards`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+      const res = await fetch(`${API_BASE_URL}/platform/wards`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
-      if (response.ok) {
-        const data = await response.json();
-        setWards(data.wards || []);
-      }
+      const data = await res.json();
+      setWards(data.wards || data || []);
     } catch (error) {
       console.error('Error fetching wards:', error);
     }
   };
 
-  useEffect(() => {
-    fetchPollingUnits();
-    fetchWards();
-  }, []);
-
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setFormLoading(true);
-
     try {
       const token = getPlatformToken();
-      const response = await fetch(`${API_BASE_URL}/platform/polling-units`, {
-        method: 'POST',
+      const url = editingPU
+        ? `${API_BASE_URL}/platform/polling-units/${editingPU.id}`
+        : `${API_BASE_URL}/platform/polling-units`;
+      const method = editingPU ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(formData),
       });
-
-      if (response.ok) {
-        toast({ title: 'Success', description: 'Polling unit created successfully' });
-        setIsCreateOpen(false);
-        setFormData({ name: '', code: '', wardId: '' });
+      if (res.ok) {
+        toast({ title: 'Success', description: `Polling Unit ${editingPU ? 'updated' : 'created'} successfully` });
+        setDialogOpen(false);
+        setEditingPU(null);
+        setFormData({ name: '', code: '', wardId: '', address: '' });
         fetchPollingUnits();
       } else {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to create polling unit');
+        throw new Error('Failed');
       }
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to create polling unit',
-        variant: 'destructive',
-      });
-    } finally {
-      setFormLoading(false);
+      toast({ title: 'Error', description: 'Operation failed', variant: 'destructive' });
     }
   };
 
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedPU) return;
-    setFormLoading(true);
-
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this polling unit?')) return;
     try {
       const token = getPlatformToken();
-      const response = await fetch(`${API_BASE_URL}/platform/polling-units/${selectedPU.id}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
-
-      if (response.ok) {
-        toast({ title: 'Success', description: 'Polling unit updated successfully' });
-        setIsEditOpen(false);
-        setSelectedPU(null);
-        setFormData({ name: '', code: '', wardId: '' });
-        fetchPollingUnits();
-      } else {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to update polling unit');
-      }
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to update polling unit',
-        variant: 'destructive',
-      });
-    } finally {
-      setFormLoading(false);
-    }
-  };
-
-  const handleDelete = async (pu: PollingUnit) => {
-    if (!confirm(`Are you sure you want to delete ${pu.name}?`)) return;
-
-    try {
-      const token = getPlatformToken();
-      const response = await fetch(`${API_BASE_URL}/platform/polling-units/${pu.id}`, {
+      const res = await fetch(`${API_BASE_URL}/platform/polling-units/${id}`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
-
-      if (response.ok) {
-        toast({ title: 'Success', description: 'Polling unit deleted successfully' });
+      if (res.ok) {
+        toast({ title: 'Success', description: 'Polling Unit deleted successfully' });
         fetchPollingUnits();
       }
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to delete polling unit',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'Failed to delete polling unit', variant: 'destructive' });
     }
   };
 
-  const handleEdit = (pu: PollingUnit) => {
-    setSelectedPU(pu);
-    setFormData({ name: pu.name, code: pu.code || '', wardId: pu.wardId || '' });
-    setIsEditOpen(true);
+  const openEdit = (pu: any) => {
+    setEditingPU(pu);
+    setFormData({ name: pu.name, code: pu.code || '', wardId: pu.wardId || '', address: pu.address || '' });
+    setDialogOpen(true);
   };
-
-  const filteredPUs = pollingUnits.filter(pu =>
-    pu.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  if (loading) {
-    return <div className="flex justify-center p-8">Loading...</div>;
-  }
 
   return (
-    <>
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Polling Units</CardTitle>
-              <CardDescription>Manage all polling units globally</CardDescription>
-            </div>
-            <Button onClick={() => setIsCreateOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Polling Unit
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-4">
-            <div className="relative max-w-sm">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search polling units..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8"
-              />
-            </div>
-          </div>
-
-          <Table>
-            <TableHeader>
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle>Polling Units ({total})</CardTitle>
+          <Button onClick={() => { setEditingPU(null); setFormData({ name: '', code: '', wardId: '', address: '' }); setDialogOpen(true); }}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Polling Unit
+          </Button>
+        </div>
+        <div className="flex items-center gap-2 mt-4">
+          <Search className="h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search polling units..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            className="max-w-sm"
+          />
+        </div>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Code</TableHead>
+              <TableHead>Ward</TableHead>
+              <TableHead>Zone</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
               <TableRow>
-                <TableHead>Polling Unit Name</TableHead>
-                <TableHead>Code</TableHead>
-                <TableHead>Ward</TableHead>
-                <TableHead></TableHead>
+                <TableCell colSpan={6} className="text-center">Loading...</TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredPUs.map((pu) => (
+            ) : pollingUnits.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center">No polling units found</TableCell>
+              </TableRow>
+            ) : (
+              pollingUnits.map((pu) => (
                 <TableRow key={pu.id}>
                   <TableCell className="font-medium">{pu.name}</TableCell>
                   <TableCell>{pu.code || '-'}</TableCell>
-                  <TableCell>{pu.Ward?.name || '-'}</TableCell>
+                  <TableCell>{pu.ward?.name || '-'}</TableCell>
+                  <TableCell>{pu.ward?.zone?.name || '-'}</TableCell>
                   <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleEdit(pu)}>
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={() => handleDelete(pu)}
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    {pu.electionResult || pu.latestResult ? (
+                      <Badge variant="default">Has Result</Badge>
+                    ) : (
+                      <Badge variant="secondary">No Result</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button variant="ghost" size="sm" onClick={() => openEdit(pu)}>
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleDelete(pu.id)}>
+                      <Trash2 className="h-4 w-4 text-red-600" />
+                    </Button>
                   </TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+              ))
+            )}
+          </TableBody>
+        </Table>
+        {totalPages > 1 && (
+          <div className="mt-4 flex items-center justify-between">
+            <div className="text-sm text-muted-foreground">
+              Showing {((page - 1) * limit) + 1} to {Math.min(page * limit, total)} of {total} results
+            </div>
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious onClick={() => setPage(p => Math.max(1, p-1))} />
+                </PaginationItem>
+                {[...Array(Math.min(5, totalPages))].map((_, i) => {
+                  const pageNum = i + 1;
+                  return (
+                    <PaginationItem key={i}>
+                      <PaginationLink onClick={() => setPage(pageNum)} isActive={page === pageNum}>
+                        {pageNum}
+                      </PaginationLink>
+                    </PaginationItem>
+                  );
+                })}
+                <PaginationItem>
+                  <PaginationNext onClick={() => setPage(p => Math.min(totalPages, p+1))} />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
+        )}
+      </CardContent>
 
-      {/* Create Dialog */}
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create Polling Unit</DialogTitle>
+            <DialogTitle>{editingPU ? 'Edit Polling Unit' : 'Add Polling Unit'}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleCreate}>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Polling Unit Name *</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
-                />
+          <form onSubmit={handleSubmit}>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="name">Name</Label>
+                <Input id="name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
               </div>
-              <div className="space-y-2">
+              <div>
                 <Label htmlFor="code">Code</Label>
-                <Input
-                  id="code"
-                  value={formData.code}
-                  onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                />
+                <Input id="code" value={formData.code} onChange={(e) => setFormData({ ...formData, code: e.target.value })} />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="ward">Ward *</Label>
+              <div>
+                <Label htmlFor="wardId">Ward</Label>
                 <Select value={formData.wardId} onValueChange={(value) => setFormData({ ...formData, wardId: value })}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select ward" />
                   </SelectTrigger>
                   <SelectContent>
                     {wards.map((ward) => (
-                      <SelectItem key={ward.id} value={ward.id}>
-                        {ward.name}
-                      </SelectItem>
+                      <SelectItem key={ward.id} value={ward.id}>{ward.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
+              <div>
+                <Label htmlFor="address">Address</Label>
+                <Input id="address" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} />
+              </div>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateOpen(false)} type="button">
-                Cancel
-              </Button>
-              <Button type="submit" disabled={formLoading}>
-                {formLoading ? 'Creating...' : 'Create'}
-              </Button>
+            <DialogFooter className="mt-4">
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+              <Button type="submit">{editingPU ? 'Update' : 'Create'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
-
-      {/* Edit Dialog */}
-      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Polling Unit</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleUpdate}>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-name">Polling Unit Name *</Label>
-                <Input
-                  id="edit-name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-code">Code</Label>
-                <Input
-                  id="edit-code"
-                  value={formData.code}
-                  onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-ward">Ward *</Label>
-                <Select value={formData.wardId} onValueChange={(value) => setFormData({ ...formData, wardId: value })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select ward" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {wards.map((ward) => (
-                      <SelectItem key={ward.id} value={ward.id}>
-                        {ward.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsEditOpen(false)} type="button">
-                Cancel
-              </Button>
-              <Button type="submit" disabled={formLoading}>
-                {formLoading ? 'Updating...' : 'Update'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </>
+    </Card>
   );
 }

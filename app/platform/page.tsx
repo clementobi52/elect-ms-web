@@ -12,9 +12,6 @@ export default function PlatformDashboard() {
   const router = useRouter();
   const [checked, setChecked] = useState(false);
 
-  // One client-side bounce to sign-in for an absent or expired token. Nothing is
-  // fetched until it passes; otherwise the page would race two 401s against the
-  // sign-in screen.
   useEffect(() => {
     const token = getPlatformToken();
     if (!token || isPlatformTokenExpired(token)) {

@@ -1,343 +1,221 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import React, { useEffect, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Plus, Search, Edit, Trash2 } from 'lucide-react';
+import { getPlatformToken } from '@/lib/platform/session';
+import { API_BASE_URL } from '@/lib/config';
+import { useToast } from '@/hooks/use-toast';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Plus, MoreVertical, Edit, Trash2, Search } from 'lucide-react';
-import { useToast } from '@/components/ui/use-toast';
-import { getPlatformToken } from '@/lib/platform/session';
-import { API_BASE_URL } from '@/lib/config';
-
-interface Zone {
-  id: string;
-  name: string;
-  code?: string;
-  stateId?: string;
-  createdAt?: string;
-}
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
 
 export default function ZonesTab() {
   const { toast } = useToast();
-  const [zones, setZones] = useState<Zone[]>([]);
+  const [zones, setZones] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isEditOpen, setIsEditOpen] = useState(false);
-  const [selectedZone, setSelectedZone] = useState<Zone | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [formLoading, setFormLoading] = useState(false);
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingZone, setEditingZone] = useState<any>(null);
   const [formData, setFormData] = useState({ name: '', code: '' });
+
+  useEffect(() => {
+    fetchZones();
+  }, [page, search]);
 
   const fetchZones = async () => {
     try {
+      setLoading(true);
       const token = getPlatformToken();
-      const response = await fetch(`${API_BASE_URL}/platform/zones`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+      const res = await fetch(`${API_BASE_URL}/platform/zones?search=${search}&page=${page}&limit=50`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
-      if (response.ok) {
-        const data = await response.json();
-        setZones(data.zones || data.data || []);
-      }
+      const data = await res.json();
+      setZones(data.zones || data || []);
+      setTotal(data.total || (Array.isArray(data) ? data.length : 0));
+      setTotalPages(data.totalPages || 1);
     } catch (error) {
       console.error('Error fetching zones:', error);
+      toast({ title: 'Error', description: 'Failed to fetch zones', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchZones();
-  }, []);
-
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setFormLoading(true);
-
     try {
       const token = getPlatformToken();
-      const response = await fetch(`${API_BASE_URL}/platform/zones`, {
-        method: 'POST',
+      const url = editingZone
+        ? `${API_BASE_URL}/platform/zones/${editingZone.id}`
+        : `${API_BASE_URL}/platform/zones`;
+      const method = editingZone ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(formData),
       });
-
-      if (response.ok) {
-        toast({ title: 'Success', description: 'Zone created successfully' });
-        setIsCreateOpen(false);
+      if (res.ok) {
+        toast({ title: 'Success', description: `Zone ${editingZone ? 'updated' : 'created'} successfully` });
+        setDialogOpen(false);
+        setEditingZone(null);
         setFormData({ name: '', code: '' });
         fetchZones();
       } else {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to create zone');
+        throw new Error('Failed');
       }
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to create zone',
-        variant: 'destructive',
-      });
-    } finally {
-      setFormLoading(false);
+      toast({ title: 'Error', description: 'Operation failed', variant: 'destructive' });
     }
   };
 
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedZone) return;
-    setFormLoading(true);
-
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this zone?')) return;
     try {
       const token = getPlatformToken();
-      const response = await fetch(`${API_BASE_URL}/platform/zones/${selectedZone.id}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
-
-      if (response.ok) {
-        toast({ title: 'Success', description: 'Zone updated successfully' });
-        setIsEditOpen(false);
-        setSelectedZone(null);
-        setFormData({ name: '', code: '' });
-        fetchZones();
-      } else {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to update zone');
-      }
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to update zone',
-        variant: 'destructive',
-      });
-    } finally {
-      setFormLoading(false);
-    }
-  };
-
-  const handleDelete = async (zone: Zone) => {
-    if (!confirm(`Are you sure you want to delete ${zone.name}?`)) return;
-
-    try {
-      const token = getPlatformToken();
-      const response = await fetch(`${API_BASE_URL}/platform/zones/${zone.id}`, {
+      const res = await fetch(`${API_BASE_URL}/platform/zones/${id}`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
-
-      if (response.ok) {
+      if (res.ok) {
         toast({ title: 'Success', description: 'Zone deleted successfully' });
         fetchZones();
       }
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to delete zone',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'Failed to delete zone', variant: 'destructive' });
     }
   };
 
-  const handleEdit = (zone: Zone) => {
-    setSelectedZone(zone);
+  const openEdit = (zone: any) => {
+    setEditingZone(zone);
     setFormData({ name: zone.name, code: zone.code || '' });
-    setIsEditOpen(true);
+    setDialogOpen(true);
   };
 
-  const filteredZones = zones.filter(zone =>
-    zone.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  if (loading) {
-    return <div className="flex justify-center p-8">Loading...</div>;
-  }
-
   return (
-    <>
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Zones</CardTitle>
-              <CardDescription>Manage all zones globally</CardDescription>
-            </div>
-            <Button onClick={() => setIsCreateOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Zone
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-4">
-            <div className="relative max-w-sm">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search zones..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8"
-              />
-            </div>
-          </div>
-
-          <Table>
-            <TableHeader>
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle>Zones ({total})</CardTitle>
+          <Button onClick={() => { setEditingZone(null); setFormData({ name: '', code: '' }); setDialogOpen(true); }}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Zone
+          </Button>
+        </div>
+        <div className="flex items-center gap-2 mt-4">
+          <Search className="h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search zones..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            className="max-w-sm"
+          />
+        </div>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Code</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
               <TableRow>
-                <TableHead>Zone Name</TableHead>
-                <TableHead>Code</TableHead>
-                <TableHead></TableHead>
+                <TableCell colSpan={3} className="text-center">Loading...</TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredZones.map((zone) => (
+            ) : zones.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={3} className="text-center">No zones found</TableCell>
+              </TableRow>
+            ) : (
+              zones.map((zone) => (
                 <TableRow key={zone.id}>
                   <TableCell className="font-medium">{zone.name}</TableCell>
                   <TableCell>{zone.code || '-'}</TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleEdit(zone)}>
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={() => handleDelete(zone)}
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                  <TableCell className="text-right">
+                    <Button variant="ghost" size="sm" onClick={() => openEdit(zone)}>
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleDelete(zone.id)}>
+                      <Trash2 className="h-4 w-4 text-red-600" />
+                    </Button>
                   </TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+              ))
+            )}
+          </TableBody>
+        </Table>
+        {totalPages > 1 && (
+          <div className="mt-4">
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious onClick={() => setPage(p => Math.max(1, p-1))} />
+                </PaginationItem>
+                {[...Array(Math.min(5, totalPages))].map((_, i) => (
+                  <PaginationItem key={i}>
+                    <PaginationLink onClick={() => setPage(i+1)} isActive={page === i+1}>
+                      {i+1}
+                    </PaginationLink>
+                  </PaginationItem>
+                ))}
+                <PaginationItem>
+                  <PaginationNext onClick={() => setPage(p => Math.min(totalPages, p+1))} />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
+        )}
+      </CardContent>
 
-      {/* Create Dialog */}
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create Zone</DialogTitle>
+            <DialogTitle>{editingZone ? 'Edit Zone' : 'Add Zone'}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleCreate}>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Zone Name *</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
-                />
+          <form onSubmit={handleSubmit}>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="name">Name</Label>
+                <Input id="name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
               </div>
-              <div className="space-y-2">
+              <div>
                 <Label htmlFor="code">Code</Label>
-                <Input
-                  id="code"
-                  value={formData.code}
-                  onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                />
+                <Input id="code" value={formData.code} onChange={(e) => setFormData({ ...formData, code: e.target.value })} />
               </div>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateOpen(false)} type="button">
-                Cancel
-              </Button>
-              <Button type="submit" disabled={formLoading}>
-                {formLoading ? 'Creating...' : 'Create'}
-              </Button>
+            <DialogFooter className="mt-4">
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+              <Button type="submit">{editingZone ? 'Update' : 'Create'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
-
-      {/* Edit Dialog */}
-      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Zone</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleUpdate}>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-name">Zone Name *</Label>
-                <Input
-                  id="edit-name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-code">Code</Label>
-                <Input
-                  id="edit-code"
-                  value={formData.code}
-                  onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsEditOpen(false)} type="button">
-                Cancel
-              </Button>
-              <Button type="submit" disabled={formLoading}>
-                {formLoading ? 'Updating...' : 'Update'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </>
+    </Card>
   );
 }
