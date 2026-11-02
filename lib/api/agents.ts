@@ -258,14 +258,32 @@ export const agentsApi = {
   },
 
   /**
+   * Get assignment history for an agent
+   */
+  getAgentAssignments: async (
+    agentId: string,
+    page: number = 1,
+    limit: number = 50
+  ): Promise<{ success: boolean; data: { assignments: any[]; pagination: any } }> => {
+    const response = await apiClient.get<any>(`/admin/agents/${agentId}/assignments`, {
+      params: { page, limit },
+    });
+    return {
+      success: true,
+      data: response?.data || response,
+    };
+  },
+
+  /**
    * Assign agent to polling unit
    */
   assignPollingUnit: async (
     agentId: string,
-    pollingUnitId: string
+    pollingUnitId: string,
+    reason?: string
   ): Promise<{ success: boolean; message: string; agent: Agent }> => {
     try {
-      const response = await apiClient.patch<any>(`/admin/agents/${agentId}/assign`, { pollingUnitId });
+      const response = await apiClient.patch<any>(`/admin/agents/${agentId}/assign`, { pollingUnitId, reason });
       
       let agent = null;
       if (response && response.agent) {

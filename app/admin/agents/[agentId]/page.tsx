@@ -22,6 +22,7 @@ import {
   AlertTriangle,
   RefreshCw,
   Landmark,
+  History,
 } from 'lucide-react';
 
 function formatDate(value?: string | null): string {
@@ -54,6 +55,8 @@ export default function AgentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [assignments, setAssignments] = useState<any[]>([]);
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
 
   const load = useCallback(async (background = false) => {
     if (!agentId) return;
@@ -64,13 +67,18 @@ export default function AgentDetailPage() {
     }
     setError(null);
     try {
-      const result = await agentsApi.getAgentById(agentId);
-      setAgent(result.agent);
+      const [agentRes, assignRes] = await Promise.all([
+        agentsApi.getAgentById(agentId),
+        agentsApi.getAgentAssignments(agentId, 1, 20).catch(() => ({ success: false, data: { assignments: [] } })),
+      ]);
+      setAgent(agentRes.agent);
+      setAssignments(assignRes?.data?.assignments || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load agent');
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setAssignmentsLoading(false);
     }
   }, [agentId]);
 
@@ -264,6 +272,40 @@ export default function AgentDetailPage() {
                 </CardContent>
               </Card>
             </div>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <History className="h-4 w-4" /> Assignment History
+                </CardTitle>
+                <Button variant="outline" size="sm" onClick={() => router.push(`/admin/agents/${agentId}/assign`)}>
+                  <MapPin className="h-4 w-4 mr-2" />
+                  Reassign
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {assignments.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No assignment history yet.</p>
+                ) : (
+                  <div className="divide-y">
+                    {assignments.map((a) => (
+                      <div key={a.id} className="flex flex-col gap-1 py-3 text-sm">
+                        <div className="flex items-center justify-between">
+                          <div className="font-medium">
+                            {a.fromPollingUnit?.name || 'Unassigned'} → {a.toPollingUnit?.name || 'Unassigned'}
+                          </div>
+                          <div className="text-muted-foreground">{formatDate(a.createdAt)}</div>
+                        </div>
+                        <div className="text-muted-foreground">
+                          Assigned by: {a.assigner?.name || 'System'}
+                          {a.reason ? ` • Reason: ${a.reason}` : ''}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         ) : null}
       </div>
