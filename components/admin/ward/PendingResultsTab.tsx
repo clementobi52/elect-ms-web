@@ -69,7 +69,7 @@ export function PendingResultsTab({
         <div className="flex items-center justify-between">
           <div>
             <CardTitle>Pending Results for Review</CardTitle>
-            <CardDescription>Review and approve election results from your polling units</CardDescription>
+            <CardDescription>Review and approve election results from your polling unit</CardDescription>
           </div>
           <Button variant="outline" size="sm">
             <Filter className="h-4 w-4 mr-2" />
