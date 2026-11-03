@@ -696,7 +696,7 @@ export default function WardAdminDashboard() {
 
       if (resultsRes.ok) {
         const resultsData = await resultsRes.json();
-        setPendingResults(resultsData);
+        setPendingResults(Array.isArray(resultsData) ? resultsData : resultsData?.results || resultsData?.data || []);
       }
 
       if (partiesRes.ok) {
