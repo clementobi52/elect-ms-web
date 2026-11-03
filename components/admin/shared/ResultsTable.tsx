@@ -446,7 +446,7 @@ export function ResultsTable({
             <div className="grid gap-6 py-4">
               {/* Result Image */}
               {selectedResult?.resultFileUrl ? (
-                <div className="aspect-video bg-muted rounded-lg overflow-hidden border">
+                <div className="mx-auto aspect-[3/4] w-full max-w-sm bg-muted rounded-lg overflow-hidden border">
                   <img 
                     src={selectedResult.resultFileUrl} 
                     alt="Result" 
@@ -459,7 +459,7 @@ export function ResultsTable({
                   />
                 </div>
               ) : (
-                <div className="aspect-video bg-muted rounded-lg flex items-center justify-center border">
+                <div className="mx-auto aspect-[3/4] w-full max-w-sm bg-muted rounded-lg flex items-center justify-center border">
                   <FileText className="h-16 w-16 text-muted-foreground" />
                 </div>
               )}
@@ -548,7 +548,7 @@ export function ResultsTable({
             <div className="grid gap-6 py-4">
               {/* Result Image */}
               {selectedResult?.resultFileUrl ? (
-                <div className="aspect-video bg-muted rounded-lg overflow-hidden border">
+                <div className="mx-auto aspect-[3/4] w-full max-w-sm bg-muted rounded-lg overflow-hidden border">
                   <img 
                     src={selectedResult.resultFileUrl} 
                     alt="Result" 
@@ -561,7 +561,7 @@ export function ResultsTable({
                   />
                 </div>
               ) : (
-                <div className="aspect-video bg-muted rounded-lg flex items-center justify-center border">
+                <div className="mx-auto aspect-[3/4] w-full max-w-sm bg-muted rounded-lg flex items-center justify-center border">
                   <FileText className="h-16 w-16 text-muted-foreground" />
                 </div>
               )}

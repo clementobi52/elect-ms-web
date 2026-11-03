@@ -1208,7 +1208,7 @@ export default function SystemResultsPage() {
                         <img 
                           src={getImageUrl(selectedResult.resultFileUrl)}
                           alt={`Result for ${selectedResult.pollingUnitName}`}
-                          className="w-full max-h-[400px] object-contain rounded-lg border bg-muted/20"
+                          className="mx-auto max-h-[60vh] w-auto max-w-full object-contain rounded-lg border bg-muted/20"
                           onClick={() => setImagePreview(getImageUrl(selectedResult.resultFileUrl!))}
                           onError={(e) => {
                             console.error('❌ Image load error:', getImageUrl(selectedResult.resultFileUrl!));
@@ -1429,7 +1429,7 @@ export default function SystemResultsPage() {
               <img 
                 src={imagePreview || ''} 
                 alt="Result preview"
-                className="w-full max-h-[80vh] object-contain rounded-lg bg-black/90"
+                className="mx-auto max-h-[80vh] w-auto max-w-full object-contain rounded-lg bg-black/90"
                 onError={(e) => {
                   console.error('❌ Image preview error:', imagePreview);
                 }}

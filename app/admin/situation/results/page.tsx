@@ -1272,7 +1272,7 @@ export default function SituationRoomResultsPage() {
                         <img 
                           src={selectedResult.resultFileUrl}
                           alt={`Result for ${selectedResult.pollingUnitName}`}
-                          className="w-full max-h-[400px] object-contain rounded-lg border bg-muted/20"
+                          className="mx-auto max-h-[60vh] w-auto max-w-full object-contain rounded-lg border bg-muted/20"
                           onClick={() => window.open(selectedResult.resultFileUrl, '_blank')}
                         />
                         <div className="absolute bottom-2 right-2 flex gap-2">
@@ -1414,7 +1414,7 @@ export default function SituationRoomResultsPage() {
               <img 
                 src={imagePreview || ''} 
                 alt="Result preview"
-                className="w-full max-h-[80vh] object-contain rounded-lg bg-black/90"
+                className="mx-auto max-h-[80vh] w-auto max-w-full object-contain rounded-lg bg-black/90"
               />
               <Button
                 variant="ghost"
