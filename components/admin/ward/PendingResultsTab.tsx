@@ -5,7 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   Dialog,
   DialogContent,
@@ -17,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { FileText, Eye, XCircle, CheckCircle, Filter } from 'lucide-react';
+import { FileText, Eye, XCircle, CheckCircle, Filter, User, Clock } from 'lucide-react';
 import { PendingResult, Party } from '@/lib/types/ward-admin';
 
 interface PendingResultsTabProps {
@@ -35,7 +34,6 @@ export function PendingResultsTab({
   onApprove, 
   onReject, 
   formatDate,
-  getInitials 
 }: PendingResultsTabProps) {
   const [selectedResult, setSelectedResult] = useState<PendingResult | null>(null);
   const [reviewComment, setReviewComment] = useState('');
@@ -65,10 +63,15 @@ export function PendingResultsTab({
 
   return (
     <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
+      <CardHeader className="pb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <CardTitle>Pending Results for Review</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              Pending Results for Review
+              {results.length > 0 && (
+                <Badge variant="secondary">{results.length}</Badge>
+              )}
+            </CardTitle>
             <CardDescription>Review and approve election results from your polling unit</CardDescription>
           </div>
           <Button variant="outline" size="sm">
@@ -83,59 +86,82 @@ export function PendingResultsTab({
             No pending results found
           </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {results.map((result) => (
-              <Card key={result.id} className="overflow-hidden">
-                {/* Thumbnail Image */}
-                <div className="aspect-video bg-muted relative">
-                  {result.resultFileUrl ? (
-                    <img 
-                      src={result.resultFileUrl} 
-                      alt={`Result for ${result.pollingUnit}`}
-                      className="w-full h-full object-cover hover:scale-105 transition-transform cursor-pointer"
-                      onClick={() => window.open(result.resultFileUrl, '_blank')}
-                    />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center bg-slate-200">
-                      <FileText className="h-12 w-12 text-slate-400" />
-                    </div>
-                  )}
-                  <Badge className="absolute top-2 right-2 bg-yellow-500">
-                    Pending
-                  </Badge>
-                </div>
-                
-                <CardContent className="p-4">
-                  <h4 className="font-semibold">{result.pollingUnit}</h4>
-                  <p className="text-sm text-muted-foreground">Submitted by {result.agent}</p>
-                  <p className="text-xs text-muted-foreground">{formatDate(result.submittedAt)}</p>
-                  
-                  <div className="mt-3 space-y-1">
-                    {result.votes.map((vote, idx) => {
-                      const partyLogo = getPartyLogo(vote.party);
-                      
-                      return (
-                        <div key={idx} className="flex justify-between text-sm">
-                          <span className="flex items-center gap-1">
-                            {partyLogo && (
-                              <img src={partyLogo} alt="" className="w-4 h-4 rounded-full" />
-                            )}
-                            {vote.party}
-                          </span>
-                          <span className="font-medium">{vote.votes}</span>
-                        </div>
-                      );
-                    })}
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {results.map((result) => {
+              const sortedVotes = [...(result.votes || [])].sort((a, b) => b.votes - a.votes);
+              const topVotes = sortedVotes.slice(0, 3);
+              const remaining = sortedVotes.length - topVotes.length;
+              const totalVotes = sortedVotes.reduce((sum, vote) => sum + vote.votes, 0);
+
+              return (
+                <Card key={result.id} className="group flex flex-col overflow-hidden">
+                  <div className="relative h-32 w-full bg-muted">
+                    {result.resultFileUrl ? (
+                      <img
+                        src={result.resultFileUrl}
+                        alt={`Result for ${result.pollingUnit}`}
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105 cursor-pointer"
+                        onClick={() => window.open(result.resultFileUrl, '_blank')}
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200">
+                        <FileText className="h-10 w-10 text-slate-400" />
+                      </div>
+                    )}
+                    <Badge className="absolute left-2 top-2 bg-yellow-500 text-white">
+                      Pending
+                    </Badge>
+                    <Badge variant="secondary" className="absolute right-2 top-2 bg-background/90 text-xs">
+                      {totalVotes} votes
+                    </Badge>
                   </div>
 
-                  <div className="flex gap-2 mt-4">
+                  <div className="flex flex-1 flex-col gap-3 p-3">
+                    <div className="space-y-1">
+                      <h4 className="truncate text-sm font-semibold" title={result.pollingUnit}>
+                        {result.pollingUnit}
+                      </h4>
+                      <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+                        <User className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{result.agent}</span>
+                        <span className="mx-0.5">•</span>
+                        <Clock className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{formatDate(result.submittedAt)}</span>
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      {topVotes.map((vote, idx) => {
+                        const partyLogo = getPartyLogo(vote.party);
+
+                        return (
+                          <div key={idx} className="flex items-center justify-between gap-2 text-sm">
+                            <span className="flex min-w-0 items-center gap-1.5">
+                              {partyLogo ? (
+                                <img src={partyLogo} alt="" className="h-4 w-4 shrink-0 rounded-full" />
+                              ) : (
+                                <span className="h-4 w-4 shrink-0 rounded-full bg-muted" />
+                              )}
+                              <span className="truncate">{vote.party}</span>
+                            </span>
+                            <span className="shrink-0 font-medium tabular-nums">{vote.votes}</span>
+                          </div>
+                        );
+                      })}
+                      {remaining > 0 && (
+                        <p className="text-[11px] text-muted-foreground">
+                          +{remaining} more {remaining === 1 ? 'party' : 'parties'}
+                        </p>
+                      )}
+                    </div>
+
                     <Dialog open={isReviewDialogOpen && selectedResult?.id === result.id} onOpenChange={(open) => {
                       setIsReviewDialogOpen(open);
                       if (open) setSelectedResult(result);
                     }}>
                       <DialogTrigger asChild>
-                        <Button size="sm" className="flex-1">
-                          <Eye className="h-4 w-4 mr-1" />
+                        <Button size="sm" variant="outline" className="mt-auto w-full">
+                          <Eye className="h-4 w-4 mr-1.5" />
                           Review
                         </Button>
                       </DialogTrigger>
@@ -146,14 +172,14 @@ export function PendingResultsTab({
                             {result.pollingUnit} - Submitted by {result.agent}
                           </DialogDescription>
                         </DialogHeader>
-                        
+
                         <ScrollArea className="flex-1 pr-4 -mr-4 h-full overflow-y-auto">
                           <div className="grid gap-4 py-4">
                             {result.resultFileUrl ? (
                               <div className="aspect-video bg-muted rounded-lg overflow-hidden">
-                                <img 
-                                  src={result.resultFileUrl} 
-                                  alt="Result" 
+                                <img
+                                  src={result.resultFileUrl}
+                                  alt="Result"
                                   className="w-full h-full object-cover"
                                 />
                               </div>
@@ -162,13 +188,13 @@ export function PendingResultsTab({
                                 <FileText className="h-16 w-16 text-muted-foreground" />
                               </div>
                             )}
-                            
+
                             <div className="space-y-2">
                               <h4 className="font-medium">Vote Counts</h4>
                               <div className="grid grid-cols-3 gap-4">
                                 {result.votes.map((vote, idx) => {
                                   const partyLogo = getPartyLogo(vote.party);
-                                  
+
                                   return (
                                     <div key={idx} className="p-3 bg-muted rounded-lg text-center">
                                       <div className="flex items-center justify-center gap-1 mb-1">
@@ -215,9 +241,9 @@ export function PendingResultsTab({
                       </DialogContent>
                     </Dialog>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
+                </Card>
+              );
+            })}
           </div>
         )}
       </CardContent>
