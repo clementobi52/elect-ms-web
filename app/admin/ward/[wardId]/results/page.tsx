@@ -138,18 +138,19 @@ export default function WardResultsPage() {
       }
 
       const data = await response.json();
-      setResults(data);
+      const resultsArray = Array.isArray(data) ? data : data?.results || data?.data || [];
+      setResults(resultsArray);
 
       // Calculate stats
-      const totalVotes = data.reduce((sum: number, r: Result) => 
-        sum + r.votes.reduce((vSum: number, v: Vote) => vSum + v.votes, 0), 0
+      const totalVotes = resultsArray.reduce((sum: number, r: Result) => 
+        sum + (r.votes?.reduce((vSum: number, v: Vote) => vSum + (v.votes || 0), 0) || 0), 0
       );
 
       setStats({
-        total: data.length,
-        pending: data.filter((r: Result) => r.status === 'Pending').length,
-        verified: data.filter((r: Result) => r.status === 'Verified').length,
-        rejected: data.filter((r: Result) => r.status === 'Rejected').length,
+        total: resultsArray.length,
+        pending: resultsArray.filter((r: Result) => r.status === 'Pending').length,
+        verified: resultsArray.filter((r: Result) => r.status === 'Verified').length,
+        rejected: resultsArray.filter((r: Result) => r.status === 'Rejected').length,
         totalVotes,
       });
 
