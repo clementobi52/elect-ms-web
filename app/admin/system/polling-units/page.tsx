@@ -1326,7 +1326,7 @@ const fetchStatsData = useCallback(async () => {
                 <Label>Code</Label>
                 <Input
                   value={editForm.code || ''}
-                  onChange={(e) => setEditForm({ ...editForm, code: e.target.value })}
+                  readOnly
                 />
               </div>
               <div>
