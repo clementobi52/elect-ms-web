@@ -177,6 +177,14 @@ export default function SystemAdminDashboard() {
         queryFilters.zoneId = filters.zoneId;
       }
 
+      if (filters?.stateId) {
+        queryFilters.stateId = filters.stateId;
+      }
+
+      if (filters?.lgaId) {
+        queryFilters.lgaId = filters.lgaId;
+      }
+
       if (filters?.wardId) {
         queryFilters.wardId = filters.wardId;
       }
@@ -497,7 +505,7 @@ export default function SystemAdminDashboard() {
             <PollingUnitsTab
               pollingUnits={pollingUnits}
               wards={wards}
-              zones={zones}
+              states={states}
               pagination={pollingUnitPagination}
               onPageChange={loadPollingUnits}
               onRefresh={() => {

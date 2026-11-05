@@ -375,6 +375,14 @@ export const fetchPollingUnits = async (
       params.append('zoneId', filters.zoneId);
     }
     
+    if (filters.stateId && filters.stateId !== 'undefined' && filters.stateId !== 'null' && filters.stateId !== 'all') {
+      params.append('stateId', filters.stateId);
+    }
+    
+    if (filters.lgaId && filters.lgaId !== 'undefined' && filters.lgaId !== 'null' && filters.lgaId !== 'all') {
+      params.append('lgaId', filters.lgaId);
+    }
+    
     if (filters.wardId && filters.wardId !== 'undefined' && filters.wardId !== 'null' && filters.wardId !== 'all') {
       params.append('wardId', filters.wardId);
     }

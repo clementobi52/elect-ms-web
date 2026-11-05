@@ -55,14 +55,14 @@ import {
 import { CreatePollingUnitDialog } from '../dialogs/CreatePollingUnitDialog';
 import { EditPollingUnitDialog } from '../dialogs/EditPollingUnitDialog';
 import { ViewPollingUnitDialog } from '../dialogs/ViewPollingUnitDialog';
-import { PollingUnit, Zone, Ward, Pagination } from '../types';
-import { fetchWardsInZone } from '@/lib/system-admin/api';
+import { PollingUnit, State, Ward, Pagination } from '../types';
+import { fetchWardsPaginated } from '@/lib/system-admin/api';
 import { API_BASE_URL } from '@/lib/config';
 
 interface PollingUnitsTabProps {
   pollingUnits: PollingUnit[];
   wards: Ward[];
-  zones: Zone[];
+  states: State[];
   pagination: Pagination;
   onPageChange?: (page: number, filters?: any) => void;
   onRefresh: () => void;
@@ -76,7 +76,7 @@ interface PollingUnitsTabProps {
 export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
   pollingUnits,
   wards,
-  zones,
+  states,
   pagination,
   onPageChange,
   onRefresh,
@@ -97,10 +97,10 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
 
   // This tab owns its own filter state so that filtering polling units never
   // mutates (or is mutated by) the other tabs.
-  const [selectedZone, setSelectedZone] = useState('all');
+  const [selectedState, setSelectedState] = useState('all');
   const [selectedWard, setSelectedWard] = useState('all');
   const [showUnassigned, setShowUnassigned] = useState(false);
-  const [zoneWards, setZoneWards] = useState<Ward[]>([]);
+  const [stateWards, setStateWards] = useState<Ward[]>([]);
 
   const firstLoad = useRef(true);
   const fetchRef = useRef(onFetchPollingUnits);
@@ -108,7 +108,7 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
 
   const buildFilters = (overrides: any = {}) => ({
     search: localSearch || undefined,
-    zoneId: selectedZone !== 'all' ? selectedZone : undefined,
+    stateId: selectedState !== 'all' ? selectedState : undefined,
     wardId: selectedWard !== 'all' ? selectedWard : undefined,
     unassigned: showUnassigned || undefined,
     limit,
@@ -124,7 +124,7 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
 
     const filters = {
       search: localSearch || undefined,
-      zoneId: selectedZone !== 'all' ? selectedZone : undefined,
+      stateId: selectedState !== 'all' ? selectedState : undefined,
       wardId: selectedWard !== 'all' ? selectedWard : undefined,
       unassigned: showUnassigned || undefined,
       limit,
@@ -142,26 +142,26 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
     }, 400);
 
     return () => clearTimeout(timer);
-  }, [localSearch, selectedZone, selectedWard, showUnassigned, limit, setSearchQuery]);
+  }, [localSearch, selectedState, selectedWard, showUnassigned, limit, setSearchQuery]);
 
-  // Load the wards for the selected zone so the ward dropdown is complete.
+  // Load the wards for the selected state so the ward dropdown is complete.
   useEffect(() => {
     let cancelled = false;
-    if (!selectedZone || selectedZone === 'all') {
-      setZoneWards([]);
+    if (!selectedState || selectedState === 'all') {
+      setStateWards([]);
       return;
     }
-    fetchWardsInZone(API_BASE_URL, selectedZone)
+    fetchWardsPaginated(API_BASE_URL, 1, { stateId: selectedState, limit: 1000 })
       .then((res) => {
-        if (!cancelled) setZoneWards(res.wards || []);
+        if (!cancelled) setStateWards(res.data || []);
       })
       .catch(() => {
-        if (!cancelled) setZoneWards([]);
+        if (!cancelled) setStateWards([]);
       });
     return () => {
       cancelled = true;
     };
-  }, [selectedZone]);
+  }, [selectedState]);
 
   const handlePageChange = (newPage: number) => {
     if (!pagination || newPage < 1 || newPage > pagination.totalPages) return;
@@ -181,7 +181,7 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
   const clearFilters = () => {
     setLocalSearch('');
     setSearchQuery('');
-    setSelectedZone('all');
+    setSelectedState('all');
     setSelectedWard('all');
     setShowUnassigned(false);
   };
@@ -193,26 +193,26 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
   };
 
   const hasActiveFilters = !!searchQuery ||
-    (selectedZone && selectedZone !== 'all') ||
+    (selectedState && selectedState !== 'all') ||
     (selectedWard && selectedWard !== 'all') ||
     showUnassigned;
 
   // Get active filter count
   const activeFilterCount = [
     searchQuery ? 1 : 0,
-    selectedZone !== 'all' ? 1 : 0,
+    selectedState !== 'all' ? 1 : 0,
     selectedWard !== 'all' ? 1 : 0,
   ].reduce((a, b) => a + b, 0);
 
   const startItem = pagination ? (pagination.page - 1) * pagination.limit + 1 : 1;
   const endItem = pagination ? Math.min(pagination.page * pagination.limit, pagination.total) : pollingUnits.length;
 
-  // Helper function to get zone name
-  const getZoneName = (pu: PollingUnit): string => {
-    if (pu.zone?.name) return pu.zone.name;
-    if (pu.ward?.zone?.name) return pu.ward.zone.name;
-    if (pu.zoneName) return pu.zoneName;
-    return '-';
+  // Helper function to get state name
+  const getStateName = (pu: PollingUnit): string => {
+    if (pu.state?.name) return pu.state.name;
+    const state = states.find((s) => s.id === pu.stateId);
+    if (state) return state.name;
+    return (pu as any).stateName || '-';
   };
 
   // Helper function to get ward name
@@ -301,9 +301,9 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
               </form>
 
               <Select
-                value={selectedZone}
+                value={selectedState}
                 onValueChange={(value) => {
-                  setSelectedZone(value);
+                  setSelectedState(value);
                   setSelectedWard('all');
                 }}
               >
@@ -313,9 +313,9 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All States</SelectItem>
-                  {zones.map((zone) => (
-                    <SelectItem key={zone.id} value={zone.id}>
-                      {zone.name}
+                  {states.map((state) => (
+                    <SelectItem key={state.id} value={state.id}>
+                      {state.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -326,18 +326,17 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
                 onValueChange={(value) => {
                   setSelectedWard(value);
                 }}
-                disabled={!selectedZone || selectedZone === 'all'}
+                disabled={!selectedState || selectedState === 'all'}
               >
                 <SelectTrigger>
                   <Filter className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder={selectedZone && selectedZone !== 'all' ? "Filter by ward" : "Select state first"} />
+                  <SelectValue placeholder={selectedState && selectedState !== 'all' ? "Filter by ward" : "Select state first"} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Wards</SelectItem>
-                  {zoneWards.map((ward) => (
+                  {stateWards.map((ward) => (
                     <SelectItem key={ward.id} value={ward.id}>
                       {ward.name}
-                      {ward.zone?.name && ` (${ward.zone.name})`}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -372,13 +371,13 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
                     />
                   </Badge>
                 )}
-                {selectedZone !== 'all' && (
+                {selectedState !== 'all' && (
                   <Badge variant="secondary" className="flex items-center gap-1">
-                    State: {zones.find(z => z.id === selectedZone)?.name}
+                    State: {states.find(s => s.id === selectedState)?.name}
                     <X 
                       className="h-3 w-3 cursor-pointer hover:text-destructive" 
                       onClick={() => {
-                        setSelectedZone('all');
+                        setSelectedState('all');
                         setSelectedWard('all');
                       }}
                     />
@@ -386,7 +385,7 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
                 )}
                 {selectedWard !== 'all' && (
                   <Badge variant="secondary" className="flex items-center gap-1">
-                    Ward: {zoneWards.find(w => w.id === selectedWard)?.name}
+                    Ward: {stateWards.find(w => w.id === selectedWard)?.name}
                     <X 
                       className="h-3 w-3 cursor-pointer hover:text-destructive" 
                       onClick={() => setSelectedWard('all')}
@@ -448,7 +447,7 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
                   </TableRow>
                 ) : (
                   pollingUnits.map((pu) => {
-                    const zoneName = getZoneName(pu);
+                    const stateName = getStateName(pu);
                     const wardName = getWardName(pu);
                     const hasAgent = !!(pu.agent || pu.agentId || pu.agentName);
                     
@@ -464,7 +463,7 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
                           {pu.code || '-'}
                         </TableCell>
                         <TableCell>{wardName}</TableCell>
-                        <TableCell className="hidden lg:table-cell">{zoneName}</TableCell>
+                        <TableCell className="hidden lg:table-cell">{stateName}</TableCell>
                         <TableCell className="hidden lg:table-cell">
                           {pu.latitude && pu.longitude ? (
                             <span className="font-mono text-xs">
