@@ -157,10 +157,10 @@ export const WardsTab: React.FC<WardsTabProps> = ({
     return 0;
   };
 
-  // Get zone name
-  const getZoneName = (ward: any): string => {
-    if (ward.zone_name) return ward.zone_name;
-    if (ward.zone?.name) return ward.zone.name;
+  // Get LGA name
+  const getLgaName = (ward: any): string => {
+    if (ward.lga_name) return ward.lga_name;
+    if (ward.lga?.name) return ward.lga.name;
     return '-';
   };
 
@@ -211,10 +211,10 @@ export const WardsTab: React.FC<WardsTabProps> = ({
               >
                 <SelectTrigger>
                   <Building2 className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder="Filter by zone" />
+                  <SelectValue placeholder="Filter by state" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Zones</SelectItem>
+                  <SelectItem value="all">All States</SelectItem>
                   {zones.map((zone) => (
                     <SelectItem key={zone.id} value={zone.id}>
                       {zone.name}
@@ -245,7 +245,7 @@ export const WardsTab: React.FC<WardsTabProps> = ({
               <TableHeader>
                 <TableRow>
                   <TableHead>Ward Name</TableHead>
-                  <TableHead>Zone</TableHead>
+                  <TableHead>LGA</TableHead>
                   <TableHead>State</TableHead>
                   <TableHead className="text-center">Polling Units</TableHead>
                   <TableHead>Created</TableHead>
@@ -268,7 +268,7 @@ export const WardsTab: React.FC<WardsTabProps> = ({
                   wards.map((ward) => {
                     // ✅ Get values from the API response
                     const wardName = ward.name || '-';
-                    const zoneName = ward.zone_name || ward.zone?.name || '-';
+                    const lgaName = getLgaName(ward);
                     const stateName = ward.state_name || ward.state?.name || '-';
                     const puCount = ward.pollingUnitCount || ward.pollingUnits?.length || 0;
 
@@ -280,7 +280,7 @@ export const WardsTab: React.FC<WardsTabProps> = ({
                             {wardName}
                           </div>
                         </TableCell>
-                        <TableCell>{zoneName}</TableCell>
+                        <TableCell>{lgaName}</TableCell>
                         <TableCell>{stateName}</TableCell>
                         <TableCell className="text-center">
                           <Badge variant="default" className="bg-blue-100 text-blue-800 hover:bg-blue-200 font-mono">

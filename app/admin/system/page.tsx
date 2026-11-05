@@ -8,12 +8,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/components/ui/use-toast';
-import { Users, MapPin, Building2, Map, Activity, RefreshCw, Loader2, Upload, Clock, Flag } from 'lucide-react';
+import { Users, MapPin, Building2, Map, Landmark, Activity, RefreshCw, Loader2, Upload, Clock, Flag } from 'lucide-react';
 
 // Import components
 import { UserDistributionCards } from '@/components/admin/system-admin/charts/UserDistributionCards';
 import { UsersTab } from '@/components/admin/system-admin/tabs/UsersTab';
-import { ZonesTab } from '@/components/admin/system-admin/tabs/ZonesTab';
+import { StatesTab } from '@/components/admin/system-admin/tabs/StatesTab';
+import { LgaTab } from '@/components/admin/system-admin/tabs/LgaTab';
 import { WardsTab } from '@/components/admin/system-admin/tabs/WardsTab';
 import { PollingUnitsTab } from '@/components/admin/system-admin/tabs/PollingUnitsTab';
 import { LogsTab } from '@/components/admin/system-admin/tabs/LogsTab';
@@ -22,14 +23,15 @@ import { DeleteConfirmationDialog } from '@/components/admin/system-admin/dialog
 import { PartiesTab } from '@/components/admin/system-admin/tabs/PartiesTab';
 
 // Import types
-import { Zone, Ward, PollingUnit, User, SystemStats, Pagination, LogFilters, Party } from '@/components/admin/system-admin/types';
+import { Zone, Ward, PollingUnit, User, SystemStats, Pagination, LogFilters, Party, State } from '@/components/admin/system-admin/types';
 import { ROLES } from '@/lib/types';
 import { API_BASE_URL } from '@/lib/config';
 
 // API functions
 import { 
   fetchAllData, 
-  fetchZonesPaginated, 
+  fetchStates,
+  fetchLgas,
   fetchPollingUnits, 
   fetchWardsPaginated,
   fetchSystemLogs,
@@ -42,6 +44,7 @@ import {
   fetchParties,
   deleteParty
 } from '@/lib/system-admin/api';
+import type { LgaRecord } from '@/lib/system-admin/api';
 
 export default function SystemAdminDashboard() {
   const { user } = useAuth();
@@ -57,6 +60,8 @@ export default function SystemAdminDashboard() {
   });
 
   const [zones, setZones] = useState<Zone[]>([]);
+  const [states, setStates] = useState<State[]>([]);
+  const [lgas, setLgas] = useState<LgaRecord[]>([]);
   // All wards, used to populate assignment dropdowns. Kept separate from the
   // paginated ward table so filtering one tab never truncates another tab's
   // dropdown options.
@@ -70,13 +75,13 @@ export default function SystemAdminDashboard() {
   const [parties, setParties] = useState<Party[]>([]);
 
   // Pagination states
-  const [zonePagination, setZonePagination] = useState<Pagination>({ page: 1, limit: 10, total: 0, totalPages: 0 });
   const [wardPagination, setWardPagination] = useState<Pagination>({ page: 1, limit: 10, total: 0, totalPages: 0 });
   const [pollingUnitPagination, setPollingUnitPagination] = useState<Pagination>({ page: 1, limit: 50, total: 0, totalPages: 0 });
   const [logPagination, setLogPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
 
   // Filter states
-  const [zoneSearch, setZoneSearch] = useState('');
+  const [stateSearch, setStateSearch] = useState('');
+  const [lgaSearch, setLgaSearch] = useState('');
   const [wardSearch, setWardSearch] = useState('');
   const [pollingUnitSearch, setPollingUnitSearch] = useState('');
   const [partySearch, setPartySearch] = useState('');
@@ -106,12 +111,16 @@ export default function SystemAdminDashboard() {
   const loadAllData = async (showToast = false) => {
     setRefreshing(true);
     try {
-      const [data, partiesData] = await Promise.all([
+      const [data, partiesData, statesData, lgasData] = await Promise.all([
         fetchAllData(API_BASE_URL),
-        fetchParties(API_BASE_URL)
+        fetchParties(API_BASE_URL),
+        fetchStates(API_BASE_URL),
+        fetchLgas(API_BASE_URL)
       ]);
       
       setZones(data.zones || []);
+      setStates(statesData || []);
+      setLgas(lgasData || []);
       setWards(data.wards || []);
       // Don't set pollingUnits here - let loadPollingUnits handle it
       setUsers(data.users || []);
@@ -140,21 +149,6 @@ export default function SystemAdminDashboard() {
     } finally {
       setLoading(false);
       setRefreshing(false);
-    }
-  };
-
-  const loadZonesPaginated = async (page: number) => {
-    try {
-      const data = await fetchZonesPaginated(API_BASE_URL, page);
-      setZones(data.data || []);
-      setZonePagination({
-        page,
-        limit: 10,
-        total: data.total || 0,
-        totalPages: data.totalPages || 0
-      });
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to load zones", variant: "destructive" });
     }
   };
 
@@ -373,7 +367,7 @@ export default function SystemAdminDashboard() {
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Zones</CardTitle>
+                <CardTitle className="text-sm font-medium">States</CardTitle>
                 <Map className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -425,7 +419,8 @@ export default function SystemAdminDashboard() {
           <div className="flex items-center justify-between">
             <TabsList>
               <TabsTrigger value="users" className="gap-2"><Users className="h-4 w-4" /> Users</TabsTrigger>
-              <TabsTrigger value="zones" className="gap-2"><Map className="h-4 w-4" /> Zones</TabsTrigger>
+              <TabsTrigger value="states" className="gap-2"><Map className="h-4 w-4" /> States</TabsTrigger>
+              <TabsTrigger value="lgas" className="gap-2"><Landmark className="h-4 w-4" /> LGA</TabsTrigger>
               <TabsTrigger value="wards" className="gap-2"><Building2 className="h-4 w-4" /> Wards</TabsTrigger>
               <TabsTrigger value="polling-units" className="gap-2"><MapPin className="h-4 w-4" /> Polling Units</TabsTrigger>
               <TabsTrigger value="parties" className="gap-2"><Flag className="h-4 w-4" /> Parties</TabsTrigger>
@@ -463,15 +458,22 @@ export default function SystemAdminDashboard() {
             />
           </TabsContent>
 
-          <TabsContent value="zones">
-            <ZonesTab
+          <TabsContent value="states">
+            <StatesTab
+              states={states}
+              lgas={lgas}
               zones={zones}
-              pagination={zonePagination}
-              onPageChange={loadZonesPaginated}
-              onRefresh={() => loadAllData()}
-              onDelete={handleDelete}
-              searchQuery={zoneSearch}
-              setSearchQuery={setZoneSearch}
+              searchQuery={stateSearch}
+              setSearchQuery={setStateSearch}
+            />
+          </TabsContent>
+
+          <TabsContent value="lgas">
+            <LgaTab
+              lgas={lgas}
+              states={states}
+              searchQuery={lgaSearch}
+              setSearchQuery={setLgaSearch}
             />
           </TabsContent>
 

@@ -309,10 +309,10 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
               >
                 <SelectTrigger>
                   <Building2 className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder="Filter by zone" />
+                  <SelectValue placeholder="Filter by state" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Zones</SelectItem>
+                  <SelectItem value="all">All States</SelectItem>
                   {zones.map((zone) => (
                     <SelectItem key={zone.id} value={zone.id}>
                       {zone.name}
@@ -330,7 +330,7 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
               >
                 <SelectTrigger>
                   <Filter className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder={selectedZone && selectedZone !== 'all' ? "Filter by ward" : "Select zone first"} />
+                  <SelectValue placeholder={selectedZone && selectedZone !== 'all' ? "Filter by ward" : "Select state first"} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Wards</SelectItem>
@@ -374,7 +374,7 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
                 )}
                 {selectedZone !== 'all' && (
                   <Badge variant="secondary" className="flex items-center gap-1">
-                    Zone: {zones.find(z => z.id === selectedZone)?.name}
+                    State: {zones.find(z => z.id === selectedZone)?.name}
                     <X 
                       className="h-3 w-3 cursor-pointer hover:text-destructive" 
                       onClick={() => {
@@ -415,7 +415,7 @@ export const PollingUnitsTab: React.FC<PollingUnitsTabProps> = ({
                   <TableHead>Polling Unit</TableHead>
                   <TableHead className="hidden md:table-cell">Code</TableHead>
                   <TableHead>Ward</TableHead>
-                  <TableHead className="hidden lg:table-cell">Zone</TableHead>
+                  <TableHead className="hidden lg:table-cell">State</TableHead>
                   <TableHead className="hidden lg:table-cell">Location</TableHead>
                   <TableHead>Agent</TableHead>
                   <TableHead>Status</TableHead>

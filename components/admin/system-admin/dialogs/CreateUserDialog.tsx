@@ -211,16 +211,16 @@ export const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
             });
             setFormData(prev => ({ ...prev, zoneId: zone.id }));
             toast({
-              title: "✅ Zone Auto-detected",
-              description: `Zone: ${zone.name}`,
+              title: "✅ State Auto-detected",
+              description: `State: ${zone.name}`,
             });
           }
         } else {
           setAutoDetectedZone(null);
           setFormData(prev => ({ ...prev, zoneId: '' }));
           toast({
-            title: "⚠️ No Zone Found",
-            description: "This ward is not assigned to any zone",
+            title: "⚠️ No State Found",
+            description: "This ward is not assigned to any state",
             variant: "default",
           });
         }
@@ -588,15 +588,15 @@ export const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
                   <div>
                     <Label className="text-xs font-medium text-gray-600 flex items-center gap-1">
                       <Users className="h-3.5 w-3.5" />
-                      Filter by Zone
+                      Filter by State
                     </Label>
                     <SearchableSelectServer
                       value={filterZoneId}
                       onChange={handleZoneFilterChange}
                       fetchOptions={searchZones}
-                      placeholder="All zones"
+                      placeholder="All states"
                       searchPlaceholder="Type to search..."
-                      emptyMessage="No zones found"
+                      emptyMessage="No states found"
                       className="mt-1"
                       initialOptions={zones.slice(0, 20)}
                       portal={true}
@@ -617,7 +617,7 @@ export const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
                       onChange={handleWardFilterChange}
                       fetchOptions={searchWards}
                       fetchParams={filterZoneId ? { zoneId: filterZoneId } : undefined}
-                      placeholder={filterZoneId ? 'Select a ward in zone...' : 'All wards'}
+                      placeholder={filterZoneId ? 'Select a ward in state...' : 'All wards'}
                       searchPlaceholder="Type to search..."
                       emptyMessage="No wards found"
                       className="mt-1"
@@ -663,7 +663,7 @@ export const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
                           filterWardId
                             ? 'Select polling unit in ward...'
                             : filterZoneId
-                              ? 'Select polling unit in zone...'
+                              ? 'Select polling unit in state...'
                               : 'Search polling unit...'
                         }
                         searchPlaceholder="Type to search..."
@@ -678,7 +678,7 @@ export const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
                       {filterWardId
                         ? 'Listed for the selected ward'
                         : filterZoneId
-                          ? 'Listed for the selected zone'
+                          ? 'Listed for the selected state'
                           : `${pollingUnits.length.toLocaleString()} polling units available`}
                     </p>
                   </div>
@@ -691,15 +691,15 @@ export const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
                   <div>
                     <Label className="text-xs font-medium text-gray-600 flex items-center gap-1">
                       <Users className="h-3.5 w-3.5" />
-                      Filter by Zone
+                      Filter by State
                     </Label>
                     <SearchableSelectServer
                       value={filterZoneId}
                       onChange={handleZoneFilterChange}
                       fetchOptions={searchZones}
-                      placeholder="All zones"
+                      placeholder="All states"
                       searchPlaceholder="Type to search..."
-                      emptyMessage="No zones found"
+                      emptyMessage="No states found"
                       className="mt-1"
                       initialOptions={zones.slice(0, 20)}
                       portal={true}
@@ -719,7 +719,7 @@ export const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
                       onChange={handleWardChange}
                       fetchOptions={searchWards}
                       fetchParams={filterZoneId ? { zoneId: filterZoneId } : undefined}
-                      placeholder={filterZoneId ? 'Select a ward in zone...' : 'Search ward...'}
+                      placeholder={filterZoneId ? 'Select a ward in state...' : 'Search ward...'}
                       searchPlaceholder="Type to search..."
                       emptyMessage="No wards found"
                       className="mt-1"
@@ -732,7 +732,7 @@ export const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
                       <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-md flex items-center gap-2">
                         <CheckCircle className="h-4 w-4 text-green-500" />
                         <span className="text-sm text-green-700">
-                          Zone auto-detected: <strong>{autoDetectedZone.name}</strong>
+                          State auto-detected: <strong>{autoDetectedZone.name}</strong>
                         </span>
                       </div>
                     )}
@@ -741,7 +741,7 @@ export const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
                       <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md flex items-center gap-2">
                         <AlertTriangle className="h-4 w-4 text-yellow-500" />
                         <span className="text-sm text-yellow-700">
-                          No zone found for this ward. Please select manually.
+                          No state found for this ward. Please select manually.
                         </span>
                       </div>
                     )}
@@ -823,9 +823,9 @@ export const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
                     value={formData.zoneId}
                     onChange={(value) => setFormData({ ...formData, zoneId: value })}
                     fetchOptions={searchZones}
-                    placeholder="Search zone..."
+                    placeholder="Search state..."
                     searchPlaceholder="Type to search..."
-                    emptyMessage="No zones found"
+                    emptyMessage="No states found"
                     className="mt-1"
                     initialOptions={zones.slice(0, 20)}
                     portal={true}
@@ -849,7 +849,7 @@ export const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
               {isFetchingPollingUnit ? (
                 <div className="flex items-center justify-center py-4">
                   <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
-                  <span className="ml-2 text-sm text-blue-600">Detecting ward and zone...</span>
+                  <span className="ml-2 text-sm text-blue-600">Detecting ward and state...</span>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -874,7 +874,7 @@ export const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
                   <div className="flex items-center justify-between p-2 bg-white rounded-md border border-gray-100">
                     <div className="flex items-center gap-2">
                       <Users className="h-4 w-4 text-gray-500" />
-                      <span className="text-sm font-medium text-gray-600">Zone</span>
+                      <span className="text-sm font-medium text-gray-600">State</span>
                     </div>
                     {autoDetectedZone ? (
                       <Badge className="bg-green-100 text-green-700 border-green-200 flex items-center gap-1">
@@ -917,14 +917,14 @@ export const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
                     )}
                     {!autoDetectedZone && (
                       <div>
-                        <Label className="text-xs text-gray-600">Select Zone</Label>
+                        <Label className="text-xs text-gray-600">Select State</Label>
                         <SearchableSelectServer
                           value={formData.zoneId}
                           onChange={(value) => setFormData({ ...formData, zoneId: value })}
                           fetchOptions={searchZones}
-                          placeholder="Search zone..."
+                          placeholder="Search state..."
                           searchPlaceholder="Type to search..."
-                          emptyMessage="No zones found"
+                          emptyMessage="No states found"
                           className="mt-0.5"
                           initialOptions={zones.slice(0, 20)}
                           portal={true}
@@ -937,7 +937,7 @@ export const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
 
               <p className="text-xs text-blue-600 mt-2 flex items-center gap-1">
                 <Info className="h-3 w-3" />
-                Ward and Zone are automatically assigned based on the selected polling unit
+                Ward and State are automatically assigned based on the selected polling unit
               </p>
             </div>
           )}

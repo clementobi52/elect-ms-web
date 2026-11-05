@@ -131,6 +131,51 @@ export const fetchAllData = async (API_BASE_URL: string) => {
   return { zones, wards, pollingUnits, users, stats };
 };
 
+// ==================== GEOGRAPHY REFERENCE ====================
+
+export interface StateRecord {
+  id: string;
+  name: string;
+  code: string;
+}
+
+export interface LgaRecord {
+  id: string;
+  name: string;
+  code?: string;
+  state_id?: string;
+  stateId?: string;
+  state_name?: string;
+  stateName?: string;
+  wardCount?: number;
+  pollingUnitCount?: number;
+  state?: StateRecord;
+}
+
+export const fetchStates = async (API_BASE_URL: string): Promise<StateRecord[]> => {
+  const token = localStorage.getItem('authToken');
+  const response = await fetch(`${API_BASE_URL}/admin/system/states?limit=1000`, {
+    headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
+  });
+
+  if (!response.ok) return [];
+
+  const data = await response.json();
+  return data.data || data.states || [];
+};
+
+export const fetchLgas = async (API_BASE_URL: string): Promise<LgaRecord[]> => {
+  const token = localStorage.getItem('authToken');
+  const response = await fetch(`${API_BASE_URL}/admin/system/lgas?limit=1000`, {
+    headers: withTenantHeaders({ 'Authorization': `Bearer ${token}` })
+  });
+
+  if (!response.ok) return [];
+
+  const data = await response.json();
+  return data.data || data.lgas || [];
+};
+
 // ==================== ZONES ====================
 
 export const fetchZonesPaginated = async (API_BASE_URL: string, page: number) => {

@@ -103,14 +103,14 @@ export const CreateWardDialog: React.FC<CreateWardDialogProps> = ({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="zone">Zone</Label>
+              <Label htmlFor="zone">State</Label>
               <Select
                 value={formData.zoneId}
                 onValueChange={(value) => setFormData({ ...formData, zoneId: value })}
                 required
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select zone" />
+                  <SelectValue placeholder="Select state" />
                 </SelectTrigger>
                 <SelectContent>
                   {zones.map((zone) => (
